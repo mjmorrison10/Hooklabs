@@ -40,7 +40,7 @@
   </div>
   <p class="lede">Not an AI hook generator — a <b>hook underwriting engine</b>. HOOKLAB retrieves proven
     structures, grounds them in evidence (your winners, comps, source material), ranks candidates by proof,
-    and learns from outcomes. AI only does the glue. Your ledger replaces the Excel sheet.</p>
+    and learns from outcomes. AI only does the glue. Your ledger replaces the Excel sheet. The bank grows by <b>mechanisms</b> (core → extended → historical), not by dumping 1000 lines.</p>
 
   <!-- GENERATE VIEW -->
   <section class="view" id="viewGenerate">
@@ -146,23 +146,54 @@
     <section class="panel">
       <div class="panelhead">
         <span class="step">Bank</span>
-        <h2>Curated pattern library</h2>
+        <h2>Mechanisms, not 1000 random lines</h2>
       </div>
       <p class="hint" style="margin-top:-6px;margin-bottom:14px">
-        Structures, not full sentences. AI never invents the pattern — it only fills slots and rewrites
-        with your evidence. Comps you add become market evidence.
+        Structures + historical attention physics. AI never invents the pattern — it fills slots.
+        <b>Core</b> = daily drivers. <b>Extended</b> = depth. <b>Historical</b> = documented lineage
+        (Listerine/halitosis diagnosis, PAS, reason-why…). Instances are evidence cards, not extra noise.
       </p>
+      <div class="stats" id="bankStats" style="margin-bottom:14px"></div>
+
+      <div class="bank-controls">
+        <input type="search" id="bankSearch" placeholder="Search mechanisms, scaffolds, history…" autocomplete="off">
+        <select id="bankMechanism" aria-label="Mechanism filter"></select>
+      </div>
+      <div class="chiprow" style="margin:12px 0 14px" id="bankTierChips">
+        <button type="button" class="chip on" data-bank-tier="all">All formulas</button>
+        <button type="button" class="chip" data-bank-tier="core">Core</button>
+        <button type="button" class="chip" data-bank-tier="extended">Extended</button>
+        <button type="button" class="chip" data-bank-tier="historical">Historical formulas</button>
+        <button type="button" class="chip" data-bank-tier="instances">Historical instances</button>
+      </div>
+
       <div class="actionrow" style="margin-bottom:14px">
         <button class="btn primary" id="addCompBtn" type="button">+ Add competitor / market comp</button>
       </div>
+
       <div class="subpanel">
         <h3>Your comps</h3>
         <div id="compList" class="cardlist"></div>
         <p class="hint" id="compEmpty">No comps yet. Paste hooks that worked in your niche.</p>
       </div>
+
       <div class="subpanel" style="margin-top:14px">
         <h3>Pattern bank <span class="opt" id="patternCount"></span></h3>
+        <p class="hint" style="margin:-4px 0 12px">Core shows first. Use <b>See more</b> or search for extended + historical depth. Underwriting still prefers core.</p>
         <div id="patternList" class="cardlist"></div>
+        <div id="seeMoreWrap" class="see-more-wrap">
+          <button class="btn primary" id="seeMoreBtn" type="button">See more patterns →</button>
+          <p class="hint" id="seeMoreHint" style="margin-top:8px"></p>
+        </div>
+      </div>
+
+      <div class="subpanel hidden" id="instanceSection" style="margin-top:14px">
+        <h3>Historical instances <span class="opt">(evidence, not candidates)</span></h3>
+        <p class="hint" style="margin:-4px 0 12px">
+          Documented campaigns and traditions. Example: Listerine didn’t invent curiosity —
+          it named an unnamed fear so people had to investigate. Same WTF job as many modern opens.
+        </p>
+        <div id="instanceList" class="cardlist"></div>
       </div>
     </section>
   </section>

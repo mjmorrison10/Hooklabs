@@ -2,7 +2,10 @@
 // Evidence-based hook underwriting. AI fills slots; proof ranks candidates.
 
 import { generateText } from "./llm.js";
-import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./patterns.js";
+import {
+    PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES,
+    HISTORICAL_INSTANCES, EVIDENCE_LABELS, TIER_LABELS, MECHANISMS, countByTier
+  } from "./patterns.js";
 
 (function () {
   "use strict";
@@ -15,7 +18,13 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
     ledger: [],      // personal proof entries
     comps: [],       // market comps
     lastResults: null,
-    selectedAngles: []
+    selectedAngles: [],
+    bank: {
+      showMore: false,
+      query: "",
+      tier: "all",       // all | core | extended | historical | instances
+      mechanism: "all"
+    }
   };
 
   var settings = {
@@ -141,7 +150,17 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
   }
 
   // ---------- ranking / underwriting core ----------
-  function selectPatterns(niche, platform, angleIds) {
+  function tierBoost(tier) {
+    if (tier === "core") return 0.12;
+    if (tier === "historical") return 0.06;
+    if (tier === "extended") return 0.0;
+    return 0;
+  }
+
+  function selectPatterns(niche, platform, angleIds, opts) {
+    opts = opts || {};
+    var preferCore = opts.preferCore !== false;
+    var poolLimit = opts.poolLimit || 20;
     var allowedFamilies = null;
     if (angleIds && angleIds.length) {
       allowedFamilies = {};
@@ -155,8 +174,8 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
     var scored = PATTERNS.map(function (p) {
       var nicheFit = (!p.niches || p.niches.indexOf(niche) >= 0 || p.niches.indexOf("general") >= 0) ? 1 : 0.35;
       var platformFit = (!p.platforms || p.platforms.indexOf(platform) >= 0) ? 1 : 0.5;
-      var angleFit = !allowedFamilies || allowedFamilies[p.family] ? 1 : 0.15;
-      var fam = stats[p.family];
+      var angleFit = !allowedFamilies || allowedFamilies[p.family] || allowedFamilies[p.mechanism] ? 1 : 0.15;
+      var fam = stats[p.family] || stats[p.mechanism];
       var personal = 0.5;
       var winRate = null;
       if (fam && fam.total > 0) {
@@ -164,31 +183,58 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
         personal = fam.scoreSum / fam.total;
       }
       var fatigue = fatigueScore(p.id, p.family);
+      var histBonus = p.evidence === "historically-documented" ? 0.04 : 0;
       var score =
-        p.strength * 0.28 +
-        personal * 0.34 +
-        nicheFit * 0.14 +
-        platformFit * 0.1 +
-        angleFit * 0.14 -
+        p.strength * 0.26 +
+        personal * 0.32 +
+        nicheFit * 0.12 +
+        platformFit * 0.09 +
+        angleFit * 0.12 +
+        (preferCore ? tierBoost(p.tier) : 0) +
+        histBonus -
         fatigue * 0.35;
+      // Soft-penalize extended so core dominates unless angle/niche demands depth
+      if (preferCore && p.tier === "extended") score -= 0.04;
       return { pattern: p, score: score, winRate: winRate, fatigue: fatigue, personal: personal };
     });
     scored.sort(function (a, b) { return b.score - a.score; });
-    // diversity: max 2 per family in top selection pool
+
+    // Prefer core first: take strong core, then fill with extended/historical for coverage
     var picked = [];
     var familyCount = {};
-    for (var i = 0; i < scored.length && picked.length < 20; i++) {
-      var famName = scored[i].pattern.family;
-      familyCount[famName] = (familyCount[famName] || 0) + 1;
-      if (familyCount[famName] > 2) continue;
-      picked.push(scored[i]);
+    var tierCount = { core: 0, extended: 0, historical: 0 };
+
+    function tryPick(item, maxPerFamily, maxTier) {
+      var famName = item.pattern.family;
+      var tier = item.pattern.tier || "core";
+      familyCount[famName] = familyCount[famName] || 0;
+      if (familyCount[famName] >= maxPerFamily) return false;
+      if (maxTier != null && tierCount[tier] >= maxTier) return false;
+      familyCount[famName]++;
+      tierCount[tier] = (tierCount[tier] || 0) + 1;
+      picked.push(item);
+      return true;
     }
-    // fill if needed
-    if (picked.length < 12) {
-      for (var j = 0; j < scored.length && picked.length < 16; j++) {
-        if (picked.indexOf(scored[j]) < 0) picked.push(scored[j]);
+
+    // Pass 1: core (up to ~12, max 2 per family)
+    for (var i = 0; i < scored.length && tierCount.core < 12; i++) {
+      if (scored[i].pattern.tier === "core") tryPick(scored[i], 2, 12);
+    }
+    // Pass 2: historical mechanisms (up to 4) — high-signal depth
+    for (var h = 0; h < scored.length && tierCount.historical < 4 && picked.length < poolLimit; h++) {
+      if (scored[h].pattern.tier === "historical") tryPick(scored[h], 2, 4);
+    }
+    // Pass 3: extended fill
+    for (var e = 0; e < scored.length && picked.length < poolLimit; e++) {
+      if (scored[e].pattern.tier === "extended") tryPick(scored[e], 2, 8);
+    }
+    // Pass 4: anything remaining for coverage
+    if (picked.length < Math.min(12, poolLimit)) {
+      for (var j = 0; j < scored.length && picked.length < poolLimit; j++) {
+        if (picked.indexOf(scored[j]) < 0) tryPick(scored[j], 3, 99);
       }
     }
+    picked.sort(function (a, b) { return b.score - a.score; });
     return picked;
   }
 
@@ -230,7 +276,78 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
       .replace(/\{domain\}/g, "short-form")
       .replace(/\{a\}/g, "proof")
       .replace(/\{b\}/g, "vibes")
-      .replace(/\{duration\}/g, "30 days");
+      .replace(/\{duration\}/g, "30 days")
+      .replace(/\{insult\}/g, "lazy")
+      .replace(/\{system_problem\}/g, "hook system problem")
+      .replace(/\{vague\}/g, "a discipline issue")
+      .replace(/\{named_diagnosis\}/g, "hook rot")
+      .replace(/\{named_problem\}/g, "silent content disease")
+      .replace(/\{odd_n\}/g, "7")
+      .replace(/\{fantasy\}/g, "go viral overnight")
+      .replace(/\{real_outcome\}/g, "stop guessing your opens")
+      .replace(/\{expert_type\}/g, "guru")
+      .replace(/\{advice\}/g, "post more")
+      .replace(/\{time_a\}/g, "year one")
+      .replace(/\{time_b\}/g, "year three")
+      .replace(/\{low\}/g, "was guessing")
+      .replace(/\{high\}/g, "had a ledger")
+      .replace(/\{gatekeepers\}/g, "course sellers")
+      .replace(/\{minutes\}/g, "5")
+      .replace(/\{enemy_system\}/g, "the template industrial complex")
+      .replace(/\{receipt_type\}/g, "retention graph")
+      .replace(/\{narrow_identity\}/g, "podcast clippers")
+      .replace(/\{asset\}/g, "hook checklist")
+      .replace(/\{use_case\}/g, "your next short")
+      .replace(/\{role\}/g, "creator")
+      .replace(/\{counterintuitive_step\}/g, "log dead posts on purpose")
+      .replace(/\{metric\}/g, "3s retention")
+      .replace(/\{trap\}/g, "start with context")
+      .replace(/\{trend\}/g, "AI captions")
+      .replace(/\{visual_shock\}/g, "show the dead retention graph")
+      .replace(/\{option_a\}/g, "proof")
+      .replace(/\{option_b\}/g, "vibes")
+      .replace(/\{stack_type\}/g, "hook underwriting")
+      .replace(/\{tool\}/g, "caption")
+      .replace(/\{spoken\}/g, short)
+      .replace(/\{text\}/g, "STOP scrolling")
+      .replace(/\{deadline\}/g, "Friday")
+      .replace(/\{consequence\}/g, "another week of dead opens")
+      .replace(/\{subject\}/g, "one creator")
+      .replace(/\{result\}/g, "2x retention")
+      .replace(/\{agitation\}/g, "the algorithm learning to bury you")
+      .replace(/\{mechanism_name\}/g, "proof-ranked opens")
+      .replace(/\{specific_reason\}/g, "your ledger shows winners share one structure")
+      .replace(/\{objection\}/g, "AI hooks are fine")
+      .replace(/\{bridge\}/g, "logging outcomes")
+      .replace(/\{ultra_specific_person\}/g, "short-form creator tired of guessing")
+      .replace(/\{odd_fact\}/g, "logging losers")
+      .replace(/\{sacrifice\}/g, "posting 5x a day")
+      .replace(/\{quote\}/g, "I finally stopped guessing")
+      .replace(/\{person\}/g, "a client")
+      .replace(/\{reframe\}/g, "your weak open is a systems problem")
+      .replace(/\{desirable_outcome\}/g, "write hooks that hold")
+      .replace(/\{common_pain\}/g, "sounding like ChatGPT")
+      .replace(/\{small_mistake\}/g, "skip the ledger")
+      .replace(/\{worse\}/g, "repeat dead patterns")
+      .replace(/\{catastrophe\}/g, "burn the niche")
+      .replace(/\{jargon\}/g, "3-second retention")
+      .replace(/\{challenge\}/g, "logging every open")
+      .replace(/\{blunt_truth\}/g, "your hook is forgettable")
+      .replace(/\{setting\}/g, "2am after another dead post")
+      .replace(/\{insight\}/g, "structures beat vibes")
+      .replace(/\{development\}/g, "proof-based underwriting")
+      .replace(/\{enemy\}/g, "the course industry")
+      .replace(/\{payoff\}/g, "the structure behind winners")
+      .replace(/\{tiny_change\}/g, "one logged outcome")
+      .replace(/\{big_effort\}/g, "another 20 AI rewrites")
+      .replace(/\{small_niche\}/g, "tight niche")
+      .replace(/\{high_intent\}/g, "high intent")
+      .replace(/\{big_audience\}/g, "empty reach")
+      .replace(/\{stack_type\}/g, "creator ops");
+    // leftover {slots}
+    text = text.replace(/\{[^}]+\}/g, function (m) {
+      return short;
+    });
     return text;
   }
 
@@ -399,7 +516,8 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
         brandVoice: settings.brandVoice || "",
         patterns: patternPayload,
         personalLedgerSample: ledgerSummary,
-        marketComps: comps
+        marketComps: comps,
+        note: "Prefer core-tier patterns for daily drivers. Historical patterns are durable mechanisms (e.g. diagnosis/halitosis lineage) — use when they fit. Extended is depth."
       }, null, 2) +
       "\n\nReturn JSON shape:\n" +
       "{\n  \"hooks\": [\n    {\n      \"patternId\": \"...\",\n      \"text\": \"final hook line\",\n      \"grounding\": \"short note on what evidence/source it used\",\n      \"angle\": \"myth-bust|teardown|proof|story|tactical\"\n    }\n  ],\n  \"ctas\": [\n    { \"id\": \"question|disagree|save|duet|follow-series|tag\", \"text\": \"...\" }\n  ]\n}\n" +
@@ -543,6 +661,7 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
           '<p class="hooktext">' + esc(c.text) + "</p>" +
           '<div class="meta">' +
             '<span class="tag">' + esc(c.pattern.family) + "</span>" +
+            '<span class="tag">' + esc(c.pattern.tier || "core") + "</span>" +
             '<span class="tag">' + esc(c.mode) + "</span>" +
             (c.winRate != null ? '<span class="tag">win ' + Math.round(c.winRate * 100) + "%</span>" : "") +
           "</div>" +
@@ -651,42 +770,200 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
     }).join("");
   }
 
-  function renderBank() {
-    document.getElementById("patternCount").textContent = "(" + PATTERNS.length + ")";
-    document.getElementById("patternList").innerHTML = PATTERNS.map(function (p) {
-      var stats = familyStats()[p.family];
-      var wr = stats && stats.total ? Math.round((stats.wins / stats.total) * 100) + "% personal" : "no personal data";
-      return (
-        '<article class="card">' +
-          '<div class="cardhead"><span class="rank">' + esc(p.name) + " · " + esc(p.family) + "</span>" +
-          '<span class="scorelabel">' + wr + "</span></div>" +
-          '<p class="hooktext" style="font-size:14px;font-weight:500">' + esc(p.scaffold) + "</p>" +
-          '<p class="why">' + esc(p.why) + "</p>" +
-        "</article>"
-      );
-    }).join("");
+  function evidenceBadge(ev) {
+    var label = (EVIDENCE_LABELS && EVIDENCE_LABELS[ev]) || ev || "market-observed";
+    var cls = ev === "historically-documented" ? "hist" :
+              ev === "hypothesis" ? "hypo" :
+              ev === "creator-ledger" ? "proven" : "market";
+    return '<span class="badge ' + cls + '">' + esc(label) + "</span>";
+  }
 
+  function tierBadge(tier) {
+    var label = (TIER_LABELS && TIER_LABELS[tier]) || tier || "core";
+    return '<span class="badge tier-' + esc(tier || "core") + '">' + esc(label) + "</span>";
+  }
+
+  function patternCardHtml(p) {
+    var stats = familyStats()[p.family];
+    var wr = stats && stats.total ? Math.round((stats.wins / stats.total) * 100) + "% personal" : "no personal data";
+    var inst = HISTORICAL_INSTANCES.filter(function (h) {
+      return h.patternIds && h.patternIds.indexOf(p.id) >= 0;
+    });
+    var instLine = inst.length
+      ? '<p class="evidence">Historical instance: ' + esc(inst[0].title) + (inst[0].year ? " (" + esc(inst[0].year) + ")" : "") + " — " + esc(inst[0].mechanismNote) + "</p>"
+      : "";
+    return (
+      '<article class="card" data-pattern-id="' + esc(p.id) + '">' +
+        '<div class="cardhead">' +
+          '<span class="rank">' + esc(p.name) + " · " + esc(p.mechanism || p.family) + "</span>" +
+          '<span class="scorelabel">' + wr + "</span>" +
+        "</div>" +
+        '<div class="meta" style="margin-bottom:8px">' +
+          tierBadge(p.tier) +
+          evidenceBadge(p.evidence) +
+          (p.era ? '<span class="tag">' + esc(p.era) + "</span>" : "") +
+        "</div>" +
+        '<p class="hooktext" style="font-size:14px;font-weight:500">' + esc(p.scaffold) + "</p>" +
+        '<p class="why">' + esc(p.why) + "</p>" +
+        instLine +
+      "</article>"
+    );
+  }
+
+  function instanceCardHtml(h) {
+    var linked = (h.patternIds || []).map(function (id) {
+      var p = patternById(id);
+      return p ? p.name : id;
+    }).join(", ");
+    return (
+      '<article class="card instance">' +
+        '<div class="cardhead">' +
+          '<span class="rank">' + esc(h.title) + (h.year ? " · " + esc(h.year) : "") + "</span>" +
+          evidenceBadge("historically-documented") +
+        "</div>" +
+        '<p class="hooktext" style="font-size:14.5px">' + esc(h.surface) + "</p>" +
+        '<p class="why"><b>Mechanism:</b> ' + esc(h.mechanismNote) + "</p>" +
+        '<p class="why"><b>WTF job:</b> ' + esc(h.wtfJob) + "</p>" +
+        '<p class="why"><b>Modern parallel:</b> ' + esc(h.modernParallel) + "</p>" +
+        '<p class="evidence">Source: ' + esc(h.source) +
+          (linked ? " · Linked patterns: " + esc(linked) : "") +
+          (h.risk ? " · Risk: " + esc(h.risk) : "") +
+        "</p>" +
+        '<p class="why"><b>Viability today:</b> ' + esc(h.viability) + "</p>" +
+      "</article>"
+    );
+  }
+
+  function filteredPatternsForBank() {
+    var q = (state.bank.query || "").trim().toLowerCase();
+    var tier = state.bank.tier;
+    var mech = state.bank.mechanism;
+    return PATTERNS.filter(function (p) {
+      if (tier === "instances") return false;
+      if (tier !== "all" && p.tier !== tier) return false;
+      if (mech !== "all" && (p.mechanism || p.family) !== mech) return false;
+      if (!q) return true;
+      var blob = [p.name, p.scaffold, p.why, p.family, p.mechanism, p.tier, p.era, p.evidence].join(" ").toLowerCase();
+      return blob.indexOf(q) >= 0;
+    });
+  }
+
+  function filteredInstancesForBank() {
+    var q = (state.bank.query || "").trim().toLowerCase();
+    var mech = state.bank.mechanism;
+    return HISTORICAL_INSTANCES.filter(function (h) {
+      if (mech !== "all" && h.mechanism !== mech) return false;
+      if (!q) return true;
+      var blob = [h.title, h.surface, h.mechanismNote, h.modernParallel, h.source, h.wtfJob, (h.patternIds || []).join(" ")].join(" ").toLowerCase();
+      return blob.indexOf(q) >= 0;
+    });
+  }
+
+  function renderBank() {
+    var counts = countByTier();
+    document.getElementById("patternCount").textContent =
+      "(" + counts.core + " core · " + counts.extended + " extended · " + counts.historical + " historical · " + counts.instances + " instances)";
+
+    var statsEl = document.getElementById("bankStats");
+    if (statsEl) {
+      statsEl.innerHTML =
+        '<div class="stat"><div class="n">' + counts.core + '</div><div class="l">Core</div></div>' +
+        '<div class="stat"><div class="n">' + counts.extended + '</div><div class="l">Extended</div></div>' +
+        '<div class="stat"><div class="n">' + counts.historical + '</div><div class="l">Historical</div></div>' +
+        '<div class="stat"><div class="n">' + counts.instances + '</div><div class="l">Instances</div></div>' +
+        '<div class="stat"><div class="n">' + counts.total + '</div><div class="l">Formulas</div></div>';
+    }
+
+    // sync controls
+    var qEl = document.getElementById("bankSearch");
+    if (qEl && qEl.value !== state.bank.query) qEl.value = state.bank.query;
+    document.querySelectorAll("[data-bank-tier]").forEach(function (btn) {
+      btn.classList.toggle("on", btn.getAttribute("data-bank-tier") === state.bank.tier);
+    });
+    var mechSel = document.getElementById("bankMechanism");
+    if (mechSel) mechSel.value = state.bank.mechanism;
+
+    var showInstances = state.bank.tier === "instances" || state.bank.tier === "historical";
+    var list = document.getElementById("patternList");
+    var moreWrap = document.getElementById("seeMoreWrap");
+    var instSection = document.getElementById("instanceSection");
+
+    if (state.bank.tier === "instances") {
+      var instancesOnly = filteredInstancesForBank();
+      list.innerHTML = instancesOnly.length
+        ? instancesOnly.map(instanceCardHtml).join("")
+        : '<p class="hint">No historical instances match.</p>';
+      if (moreWrap) moreWrap.classList.add("hidden");
+      if (instSection) instSection.classList.add("hidden");
+    } else {
+      var patterns = filteredPatternsForBank();
+      // Core-first default view: if tier=all and no search and not showMore, only core
+      var collapsed = state.bank.tier === "all" && !state.bank.query && state.bank.mechanism === "all" && !state.bank.showMore;
+      var core = patterns.filter(function (p) { return p.tier === "core"; });
+      var rest = patterns.filter(function (p) { return p.tier !== "core"; });
+      var visible = collapsed ? core : patterns;
+
+      // Keep core first when showing all
+      if (!collapsed && state.bank.tier === "all") {
+        visible = core.concat(rest);
+      }
+
+      list.innerHTML = visible.length
+        ? visible.map(patternCardHtml).join("")
+        : '<p class="hint">No patterns match your filters.</p>';
+
+      if (moreWrap) {
+        if (collapsed && rest.length) {
+          moreWrap.classList.remove("hidden");
+          document.getElementById("seeMoreBtn").textContent =
+            "See more patterns (" + rest.length + " extended + historical) →";
+          document.getElementById("seeMoreHint").textContent =
+            "Core stays first in underwriting. Extended & historical add depth without burying the daily drivers.";
+        } else if (state.bank.tier === "all" && state.bank.showMore && !state.bank.query) {
+          moreWrap.classList.remove("hidden");
+          document.getElementById("seeMoreBtn").textContent = "Show core only ↑";
+          document.getElementById("seeMoreHint").textContent =
+            "Showing full bank. Underwriting still prefers core unless niche/goal needs depth.";
+        } else {
+          moreWrap.classList.add("hidden");
+        }
+      }
+
+      if (instSection) {
+        if (showInstances || (state.bank.showMore && state.bank.tier === "all") || state.bank.query) {
+          var inst = filteredInstancesForBank();
+          instSection.classList.remove("hidden");
+          document.getElementById("instanceList").innerHTML = inst.length
+            ? inst.map(instanceCardHtml).join("")
+            : '<p class="hint">No instances match.</p>';
+        } else {
+          instSection.classList.add("hidden");
+        }
+      }
+    }
+
+    // comps
     var comps = state.comps;
     var empty = document.getElementById("compEmpty");
-    var list = document.getElementById("compList");
+    var clist = document.getElementById("compList");
     if (!comps.length) {
-      list.innerHTML = "";
+      clist.innerHTML = "";
       empty.style.display = "block";
-      return;
+    } else {
+      empty.style.display = "none";
+      clist.innerHTML = comps.map(function (c) {
+        return (
+          '<article class="card">' +
+            '<div class="cardhead">' +
+              '<span class="rank">' + esc(c.creator || "comp") + " · " + esc(c.niche || "general") + "</span>" +
+              '<button class="btn sm danger" data-del-comp="' + esc(c.id) + '" type="button">Delete</button>' +
+            "</div>" +
+            '<p class="hooktext" style="font-size:14.5px">' + esc(c.hook) + "</p>" +
+            (c.notes ? '<p class="why">' + esc(c.notes) + "</p>" : "") +
+          "</article>"
+        );
+      }).join("");
     }
-    empty.style.display = "none";
-    list.innerHTML = comps.map(function (c) {
-      return (
-        '<article class="card">' +
-          '<div class="cardhead">' +
-            '<span class="rank">' + esc(c.creator || "comp") + " · " + esc(c.niche || "general") + "</span>" +
-            '<button class="btn sm danger" data-del-comp="' + esc(c.id) + '" type="button">Delete</button>' +
-          "</div>" +
-          '<p class="hooktext" style="font-size:14.5px">' + esc(c.hook) + "</p>" +
-          (c.notes ? '<p class="why">' + esc(c.notes) + "</p>" : "") +
-        "</article>"
-      );
-    }).join("");
   }
 
   function openEntryModal(prefill) {
@@ -793,6 +1070,50 @@ import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./p
     loadState();
     applyTheme(localStorage.getItem(LS_THEME) || "");
     initFormOptions();
+
+    // Bank filters
+    var bankSearch = document.getElementById("bankSearch");
+    if (bankSearch) {
+      bankSearch.addEventListener("input", function () {
+        state.bank.query = bankSearch.value;
+        // searching auto-expands
+        if (state.bank.query) state.bank.showMore = true;
+        renderBank();
+      });
+    }
+    document.querySelectorAll("[data-bank-tier]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.bank.tier = btn.getAttribute("data-bank-tier");
+        if (state.bank.tier !== "all") state.bank.showMore = true;
+        renderBank();
+      });
+    });
+    var bankMech = document.getElementById("bankMechanism");
+    if (bankMech) {
+      // populate mechanisms
+      bankMech.innerHTML = '<option value="all">All mechanisms</option>' +
+        MECHANISMS.map(function (m) {
+          return '<option value="' + esc(m.id) + '">' + esc(m.name) + "</option>";
+        }).join("");
+      bankMech.addEventListener("change", function () {
+        state.bank.mechanism = bankMech.value;
+        if (bankMech.value !== "all") state.bank.showMore = true;
+        renderBank();
+      });
+    }
+    var seeMoreBtn = document.getElementById("seeMoreBtn");
+    if (seeMoreBtn) {
+      seeMoreBtn.addEventListener("click", function () {
+        state.bank.showMore = !state.bank.showMore;
+        if (!state.bank.showMore) {
+          state.bank.tier = "all";
+          state.bank.query = "";
+          state.bank.mechanism = "all";
+        }
+        renderBank();
+      });
+    }
+
     setView("generate");
 
     document.getElementById("theme").addEventListener("click", cycleTheme);

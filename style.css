@@ -198,3 +198,16 @@ select{cursor:pointer}
   .actions{width:100%}
   .iconbtn{flex:1;justify-content:center}
 }
+
+
+/* bank */
+.bank-controls{display:grid;grid-template-columns:1fr minmax(160px,220px);gap:10px}
+@media (max-width:640px){.bank-controls{grid-template-columns:1fr}}
+.bank-controls input[type="search"]{margin-top:0}
+.badge.hist{background:var(--warn-ghost);border-color:transparent;color:var(--warn)}
+.badge.tier-core{background:var(--brand-ghost);border-color:transparent;color:var(--brand)}
+.badge.tier-extended{background:var(--hypo-ghost);border-color:transparent;color:var(--hypo)}
+.badge.tier-historical{background:var(--warn-ghost);border-color:transparent;color:var(--warn)}
+.see-more-wrap{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);text-align:center}
+.card.instance{border-color:rgba(232,181,77,.35)}
+.card.instance .hooktext{font-weight:600}

@@ -24,7 +24,12 @@ HOOKLAB is that spreadsheet, automated into a workflow:
 
 ## What it does today
 
-1. **Pattern bank** — curated hook *structures* (scaffolds), not freeform sentences. Families include curiosity gap, contrarian, specific proof, mistake callout, mid-action open, and more.
+1. **Pattern bank (tiered)** — curated hook *structures* (scaffolds), not freeform sentences.
+   - **Core (~30)** — daily drivers, always preferred in underwriting
+   - **Extended (~40+)** — depth / niche / rare weapons behind **See more**
+   - **Historical (~25)** — durable mechanisms with documented lineage (e.g. Listerine/halitosis diagnosis marketing, PAS, reason-why, open loops)
+   - **Historical instances** — evidence cards (campaigns/traditions), not extra generation noise
+   - Search + mechanism filters in the Bank view. We grow by **mechanisms**, not by dumping 1000 lines.
 2. **Personal ledger** — log posts with outcome (winner / meh / dead), optional retention & views. This is your proof database.
 3. **Market comps** — paste competitor hooks that worked in your niche.
 4. **Underwrite (AI or offline)**  
@@ -37,6 +42,12 @@ HOOKLAB is that spreadsheet, automated into a workflow:
    - **Fatigued** — you've overused this family recently
 6. **Angles + CTAs** — top angles from the candidate set; CTAs biased by goal (comments, saves, series).
 7. **Export / import** — backup your ledger as JSON (the anti-Excel exit ramp).
+
+## Bank philosophy
+
+Hooks change outfits. **Attention mechanisms endure.**
+
+Listerine’s “halitosis” ads would never run the same way today — but *naming an unnamed fear so people must investigate* still powers modern opens every day. HOOKLAB stores that physics (plus proven scaffolds), not a PDF of 1000 one-liners.
 
 ## What it deliberately does *not* do
 
