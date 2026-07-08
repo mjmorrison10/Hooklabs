@@ -1,0 +1,1001 @@
+// === HOOKLAB app.js ===
+// Evidence-based hook underwriting. AI fills slots; proof ranks candidates.
+
+import { generateText } from "./llm.js";
+import { PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES } from "./patterns.js";
+
+(function () {
+  "use strict";
+
+  var LS_SETTINGS = "hooklab_settings_v1";
+  var LS_STATE = "hooklab_state_v1";
+  var LS_THEME = "hooklab_theme";
+
+  var state = {
+    ledger: [],      // personal proof entries
+    comps: [],       // market comps
+    lastResults: null,
+    selectedAngles: []
+  };
+
+  var settings = {
+    provider: "gemini",
+    geminiKey: "",
+    openrouterKey: "",
+    openrouterModel: "openai/gpt-4o-mini",
+    brandVoice: ""
+  };
+
+  // ---------- storage ----------
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem(LS_SETTINGS);
+      if (raw) Object.assign(settings, JSON.parse(raw));
+    } catch (e) {}
+  }
+  function saveSettings() {
+    localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+  }
+  function loadState() {
+    try {
+      var raw = localStorage.getItem(LS_STATE);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        state.ledger = parsed.ledger || [];
+        state.comps = parsed.comps || [];
+      }
+    } catch (e) {}
+  }
+  function saveState() {
+    localStorage.setItem(LS_STATE, JSON.stringify({
+      ledger: state.ledger,
+      comps: state.comps
+    }));
+  }
+
+  // ---------- theme ----------
+  function applyTheme(t) {
+    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+    else document.documentElement.removeAttribute("data-theme");
+  }
+  function cycleTheme() {
+    var cur = document.documentElement.getAttribute("data-theme");
+    var next = cur === "dark" ? "light" : cur === "light" ? "" : "dark";
+    if (next) localStorage.setItem(LS_THEME, next);
+    else localStorage.removeItem(LS_THEME);
+    applyTheme(next);
+  }
+
+  // ---------- toast ----------
+  var toastTimer = null;
+  function toast(msg) {
+    var el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2400);
+  }
+
+  // ---------- helpers ----------
+  function uid() {
+    return "id_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+  }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function fillSelect(el, items, valueKey, labelKey) {
+    el.innerHTML = items.map(function (it) {
+      return '<option value="' + esc(it[valueKey]) + '">' + esc(it[labelKey]) + "</option>";
+    }).join("");
+  }
+  function patternById(id) {
+    for (var i = 0; i < PATTERNS.length; i++) if (PATTERNS[i].id === id) return PATTERNS[i];
+    return null;
+  }
+  function familyStats() {
+    // { family: { wins, total, recentHooks: [] } }
+    var map = {};
+    state.ledger.forEach(function (e) {
+      var fam = e.family || "unknown";
+      if (!map[fam]) map[fam] = { wins: 0, total: 0, recentHooks: [], scoreSum: 0 };
+      map[fam].total++;
+      var oc = OUTCOMES.find(function (o) { return o.id === e.outcome; });
+      var sc = oc ? oc.score : 0.45;
+      map[fam].scoreSum += sc;
+      if (e.outcome === "winner") map[fam].wins++;
+      if (map[fam].recentHooks.length < 8) map[fam].recentHooks.push(e.hook);
+    });
+    return map;
+  }
+  function recentHookTexts(limit) {
+    return state.ledger.slice(0, limit || 12).map(function (e) { return e.hook; });
+  }
+  function jaccard(a, b) {
+    var ta = new Set(String(a).toLowerCase().split(/\W+/).filter(Boolean));
+    var tb = new Set(String(b).toLowerCase().split(/\W+/).filter(Boolean));
+    if (!ta.size || !tb.size) return 0;
+    var inter = 0;
+    ta.forEach(function (t) { if (tb.has(t)) inter++; });
+    return inter / (ta.size + tb.size - inter);
+  }
+  function fatigueScore(patternId, family) {
+    var recent = state.ledger.slice(0, 10);
+    var hits = recent.filter(function (e) {
+      return e.patternId === patternId || e.family === family;
+    }).length;
+    if (hits >= 3) return 1;      // fatigued
+    if (hits === 2) return 0.55;
+    if (hits === 1) return 0.25;
+    return 0;
+  }
+  function specificityScore(text) {
+    var s = 0;
+    if (/\d/.test(text)) s += 0.35;
+    if (/\b(I|my|we)\b/i.test(text)) s += 0.15;
+    if (text.split(/\s+/).length <= 16) s += 0.15;
+    if (/[?]/.test(text)) s += 0.1;
+    if (!/\b(amazing|incredible|game[- ]?changer|unlock|revolutionary)\b/i.test(text)) s += 0.15;
+    return Math.min(1, s);
+  }
+
+  // ---------- ranking / underwriting core ----------
+  function selectPatterns(niche, platform, angleIds) {
+    var allowedFamilies = null;
+    if (angleIds && angleIds.length) {
+      allowedFamilies = {};
+      ANGLES.forEach(function (a) {
+        if (angleIds.indexOf(a.id) >= 0) {
+          a.patternFamilies.forEach(function (f) { allowedFamilies[f] = true; });
+        }
+      });
+    }
+    var stats = familyStats();
+    var scored = PATTERNS.map(function (p) {
+      var nicheFit = (!p.niches || p.niches.indexOf(niche) >= 0 || p.niches.indexOf("general") >= 0) ? 1 : 0.35;
+      var platformFit = (!p.platforms || p.platforms.indexOf(platform) >= 0) ? 1 : 0.5;
+      var angleFit = !allowedFamilies || allowedFamilies[p.family] ? 1 : 0.15;
+      var fam = stats[p.family];
+      var personal = 0.5;
+      var winRate = null;
+      if (fam && fam.total > 0) {
+        winRate = fam.wins / fam.total;
+        personal = fam.scoreSum / fam.total;
+      }
+      var fatigue = fatigueScore(p.id, p.family);
+      var score =
+        p.strength * 0.28 +
+        personal * 0.34 +
+        nicheFit * 0.14 +
+        platformFit * 0.1 +
+        angleFit * 0.14 -
+        fatigue * 0.35;
+      return { pattern: p, score: score, winRate: winRate, fatigue: fatigue, personal: personal };
+    });
+    scored.sort(function (a, b) { return b.score - a.score; });
+    // diversity: max 2 per family in top selection pool
+    var picked = [];
+    var familyCount = {};
+    for (var i = 0; i < scored.length && picked.length < 20; i++) {
+      var famName = scored[i].pattern.family;
+      familyCount[famName] = (familyCount[famName] || 0) + 1;
+      if (familyCount[famName] > 2) continue;
+      picked.push(scored[i]);
+    }
+    // fill if needed
+    if (picked.length < 12) {
+      for (var j = 0; j < scored.length && picked.length < 16; j++) {
+        if (picked.indexOf(scored[j]) < 0) picked.push(scored[j]);
+      }
+    }
+    return picked;
+  }
+
+  function offlineFill(pattern, topic) {
+    // Cheap deterministic fill when no AI — still uses the structure.
+    var t = (topic || "this").trim();
+    var short = t.length > 80 ? t.slice(0, 77) + "…" : t;
+    var text = pattern.scaffold
+      .replace(/\{topic\}/g, short)
+      .replace(/\{thing\}/g, short)
+      .replace(/\{bad_habit\}/g, "guessing your hooks")
+      .replace(/\{better\}/g, "underwriting them from proof")
+      .replace(/\{mistake\}/g, "posting without logging outcomes")
+      .replace(/\{n\}/g, "3")
+      .replace(/\{pain\}/g, "editing time")
+      .replace(/\{industry\}/g, "creator")
+      .replace(/\{goal\}/g, "want real growth")
+      .replace(/\{before\}/g, "random AI hooks")
+      .replace(/\{after\}/g, "a ledger that ranks by proof")
+      .replace(/\{claim\}/g, short)
+      .replace(/\{audience\}/g, "creators")
+      .replace(/\{old_way\}/g, "wing every open")
+      .replace(/\{turning_point\}/g, "started tracking winners")
+      .replace(/\{cost\}/g, "weeks of dead posts")
+      .replace(/\{things\}/g, "hook structures")
+      .replace(/\{action\}/g, "write an open")
+      .replace(/\{timeframe\}/g, "30 days")
+      .replace(/\{start\}/g, "guesswork")
+      .replace(/\{end\}/g, "a personal hook system")
+      .replace(/\{product_type\}/g, "another AI writer")
+      .replace(/\{problem\}/g, "weak retention")
+      .replace(/\{identity\}/g, "creator")
+      .replace(/\{win\}/g, "stops the scroll on purpose")
+      .replace(/\{line\}/g, short)
+      .replace(/\{event\}/g, "posting session")
+      .replace(/\{myth\}/g, "AI hooks are enough")
+      .replace(/\{reality\}/g, "proof is the product")
+      .replace(/\{process\}/g, "a clip actually goes viral")
+      .replace(/\{domain\}/g, "short-form")
+      .replace(/\{a\}/g, "proof")
+      .replace(/\{b\}/g, "vibes")
+      .replace(/\{duration\}/g, "30 days");
+    return text;
+  }
+
+  function statusFor(item) {
+    if (item.fatigue >= 1) return "fatigued";
+    if (item.winRate != null && item.winRate >= 0.5 && item.personal >= 0.6) return "proven";
+    if (item.winRate != null && item.personal >= 0.45) return "market"; // personal signal but mixed
+    // market structure default
+    if (item.pattern && item.pattern.strength >= 0.8) return "market";
+    return "hypo";
+  }
+
+  function badgeHtml(status) {
+    var map = {
+      proven: ['proven', 'Proven for you'],
+      market: ['market', 'Market-proven structure'],
+      hypo: ['hypo', 'Hypothesis'],
+      fatigued: ['fatigued', 'Fatigued']
+    };
+    var m = map[status] || map.hypo;
+    return '<span class="badge ' + m[0] + '">' + m[1] + "</span>";
+  }
+
+  function evidenceLine(item, topic) {
+    var parts = [];
+    if (item.winRate != null) {
+      parts.push("Personal win rate on this family: " + Math.round(item.winRate * 100) + "% across ledger entries.");
+    } else {
+      parts.push("No personal history yet for this family — ranked as market structure.");
+    }
+    if (item.compMatch) {
+      parts.push("Similar to market comp: “" + item.compMatch + "”.");
+    }
+    if (item.grounding) {
+      parts.push("Grounded in your brief/source: " + item.grounding);
+    } else if (topic) {
+      parts.push("Tied to topic brief.");
+    }
+    if (item.fatigue >= 1) parts.push("You've used this family heavily in recent posts — fatigue risk.");
+    parts.push("Pattern why: " + item.pattern.why);
+    return parts.join(" ");
+  }
+
+  function buildCandidatesOffline(topic, niche, platform, angleIds) {
+    var selected = selectPatterns(niche, platform, angleIds);
+    var comps = state.comps.filter(function (c) {
+      return !c.niche || c.niche === niche || c.niche === "general";
+    });
+    var candidates = selected.map(function (item, idx) {
+      var text = offlineFill(item.pattern, topic);
+      var bestComp = null;
+      var bestSim = 0;
+      comps.forEach(function (c) {
+        var sim = jaccard(text, c.hook);
+        if (sim > bestSim) { bestSim = sim; bestComp = c.hook; }
+      });
+      var spec = specificityScore(text);
+      var finalScore = item.score * 0.75 + spec * 0.2 + Math.min(bestSim, 0.4) * 0.2;
+      return {
+        id: uid(),
+        text: text,
+        pattern: item.pattern,
+        score: finalScore,
+        winRate: item.winRate,
+        personal: item.personal,
+        fatigue: item.fatigue,
+        compMatch: bestSim > 0.15 ? bestComp : null,
+        grounding: topic ? "topic brief" : null,
+        status: statusFor(item),
+        mode: "offline"
+      };
+    });
+    candidates.sort(function (a, b) { return b.score - a.score; });
+    // re-status after sort using same item fields
+    candidates.forEach(function (c) {
+      c.status = c.fatigue >= 1 ? "fatigued"
+        : (c.winRate != null && c.winRate >= 0.5 && c.personal >= 0.6) ? "proven"
+        : (c.pattern.strength >= 0.8 || c.compMatch) ? "market"
+        : "hypo";
+    });
+    return candidates.slice(0, 20);
+  }
+
+  function buildAngles(candidates) {
+    return ANGLES.map(function (a) {
+      var related = candidates.filter(function (c) {
+        return a.patternFamilies.indexOf(c.pattern.family) >= 0;
+      });
+      var top = related[0];
+      return {
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        sample: top ? top.text : null,
+        count: related.length,
+        score: related.reduce(function (s, c) { return s + c.score; }, 0) / (related.length || 1)
+      };
+    }).sort(function (x, y) { return y.score - x.score; }).slice(0, 5);
+  }
+
+  function buildCtas(topic, goal) {
+    var stats = familyStats();
+    var list = CTA_PATTERNS.map(function (c) {
+      var text = offlineFill({ scaffold: c.scaffold, why: c.why }, topic);
+      // light personal boost if engagement-ish ledger exists
+      var boost = (stats.engagement && stats.engagement.total) ? stats.engagement.scoreSum / stats.engagement.total : 0.5;
+      return {
+        id: c.id,
+        name: c.name,
+        text: text,
+        why: c.why,
+        score: 0.5 + boost * 0.3 + (goal === "comments" && (c.id === "question" || c.id === "disagree") ? 0.15 : 0)
+          + (goal === "saves" && c.id === "save" ? 0.2 : 0)
+          + (goal === "series" && c.id === "follow-series" ? 0.2 : 0)
+      };
+    });
+    list.sort(function (a, b) { return b.score - a.score; });
+    return list.slice(0, 3);
+  }
+
+  async function underwriteWithAI(topic, sourceMaterial, niche, platform, goal, angleIds) {
+    var selected = selectPatterns(niche, platform, angleIds).slice(0, 14);
+    var stats = familyStats();
+    var ledgerSummary = state.ledger.slice(0, 15).map(function (e) {
+      return {
+        hook: e.hook,
+        outcome: e.outcome,
+        family: e.family,
+        platform: e.platform
+      };
+    });
+    var comps = state.comps.slice(0, 12).map(function (c) {
+      return { hook: c.hook, niche: c.niche, notes: c.notes };
+    });
+
+    var patternPayload = selected.map(function (s) {
+      return {
+        id: s.pattern.id,
+        name: s.pattern.name,
+        family: s.pattern.family,
+        scaffold: s.pattern.scaffold,
+        why: s.pattern.why,
+        personalWinRate: s.winRate,
+        fatigue: s.fatigue
+      };
+    });
+
+    var prompt =
+      "You are HOOKLAB, an evidence-based hook underwriting engine for short-form creators.\n" +
+      "You do NOT invent freeform viral hooks. You fill proven scaffolds with grounded specifics.\n" +
+      "Rules:\n" +
+      "1. Use ONLY the patterns provided. One candidate per pattern id.\n" +
+      "2. Ground wording in the topic and source material. Prefer concrete nouns, numbers, stakes.\n" +
+      "3. Respect brand voice notes if present.\n" +
+      "4. Never invent fake statistics or claim a hook is proven unless ledger data supports it.\n" +
+      "5. Avoid clichés: game-changer, unlock, revolutionary, incredible, amazing.\n" +
+      "6. Keep hooks speakable in under ~3 seconds when possible.\n" +
+      "7. Return strict JSON only.\n\n" +
+      "Context:\n" +
+      JSON.stringify({
+        topic: topic,
+        sourceMaterial: (sourceMaterial || "").slice(0, 2500),
+        niche: niche,
+        platform: platform,
+        goal: goal,
+        brandVoice: settings.brandVoice || "",
+        patterns: patternPayload,
+        personalLedgerSample: ledgerSummary,
+        marketComps: comps
+      }, null, 2) +
+      "\n\nReturn JSON shape:\n" +
+      "{\n  \"hooks\": [\n    {\n      \"patternId\": \"...\",\n      \"text\": \"final hook line\",\n      \"grounding\": \"short note on what evidence/source it used\",\n      \"angle\": \"myth-bust|teardown|proof|story|tactical\"\n    }\n  ],\n  \"ctas\": [\n    { \"id\": \"question|disagree|save|duet|follow-series|tag\", \"text\": \"...\" }\n  ]\n}\n" +
+      "Generate one hook per provided pattern. Generate exactly 3 CTAs.";
+
+    var raw = await generateText({
+      provider: settings.provider,
+      geminiKey: settings.geminiKey,
+      openrouterKey: settings.openrouterKey,
+      openrouterModel: settings.openrouterModel
+    }, {
+      prompt: prompt,
+      temperature: 0.55,
+      jsonMode: true,
+      maxTokens: 4096
+    });
+
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      // try extract JSON blob
+      var m = String(raw).match(/\{[\s\S]*\}/);
+      if (!m) throw new Error("AI returned non-JSON. Try again.");
+      parsed = JSON.parse(m[0]);
+    }
+
+    var byId = {};
+    selected.forEach(function (s) { byId[s.pattern.id] = s; });
+
+    var candidates = (parsed.hooks || []).map(function (h) {
+      var item = byId[h.patternId];
+      if (!item) {
+        // fallback: try match by name
+        item = selected.find(function (s) { return s.pattern.name === h.patternId; }) || selected[0];
+      }
+      if (!item) return null;
+      var text = (h.text || "").trim() || offlineFill(item.pattern, topic);
+      var bestComp = null;
+      var bestSim = 0;
+      state.comps.forEach(function (c) {
+        var sim = jaccard(text, c.hook);
+        if (sim > bestSim) { bestSim = sim; bestComp = c.hook; }
+      });
+      var spec = specificityScore(text);
+      var finalScore = item.score * 0.7 + spec * 0.25 + Math.min(bestSim, 0.4) * 0.15;
+      return {
+        id: uid(),
+        text: text,
+        pattern: item.pattern,
+        score: finalScore,
+        winRate: item.winRate,
+        personal: item.personal,
+        fatigue: item.fatigue,
+        compMatch: bestSim > 0.15 ? bestComp : null,
+        grounding: h.grounding || (sourceMaterial ? "source material" : "topic brief"),
+        status: item.fatigue >= 1 ? "fatigued"
+          : (item.winRate != null && item.winRate >= 0.5 && item.personal >= 0.6) ? "proven"
+          : (item.pattern.strength >= 0.8 || bestSim > 0.15) ? "market"
+          : "hypo",
+        mode: "ai",
+        angle: h.angle || null
+      };
+    }).filter(Boolean);
+
+    // ensure diversity / fill missing patterns offline
+    var have = {};
+    candidates.forEach(function (c) { have[c.pattern.id] = true; });
+    selected.forEach(function (item) {
+      if (!have[item.pattern.id]) {
+        var text = offlineFill(item.pattern, topic);
+        candidates.push({
+          id: uid(),
+          text: text,
+          pattern: item.pattern,
+          score: item.score * 0.7,
+          winRate: item.winRate,
+          personal: item.personal,
+          fatigue: item.fatigue,
+          compMatch: null,
+          grounding: "scaffold fill (AI missed this pattern)",
+          status: statusFor(item),
+          mode: "offline-fallback"
+        });
+      }
+    });
+
+    candidates.sort(function (a, b) { return b.score - a.score; });
+    candidates = candidates.slice(0, 20);
+
+    var ctas;
+    if (parsed.ctas && parsed.ctas.length) {
+      ctas = parsed.ctas.slice(0, 3).map(function (c) {
+        var base = CTA_PATTERNS.find(function (x) { return x.id === c.id; }) || CTA_PATTERNS[0];
+        return {
+          id: base.id,
+          name: base.name,
+          text: c.text || offlineFill({ scaffold: base.scaffold }, topic),
+          why: base.why,
+          score: 0.7
+        };
+      });
+    } else {
+      ctas = buildCtas(topic, goal);
+    }
+
+    return {
+      hooks: candidates,
+      angles: buildAngles(candidates),
+      ctas: ctas
+    };
+  }
+
+  // ---------- render ----------
+  function setView(name) {
+    document.getElementById("viewGenerate").classList.toggle("hidden", name !== "generate");
+    document.getElementById("viewLedger").classList.toggle("hidden", name !== "ledger");
+    document.getElementById("viewBank").classList.toggle("hidden", name !== "bank");
+    ["navGenerate", "navLedger", "navBank"].forEach(function (id) {
+      var btn = document.getElementById(id);
+      btn.classList.toggle("active", btn.getAttribute("data-view") === name);
+    });
+    if (name === "ledger") renderLedger();
+    if (name === "bank") renderBank();
+  }
+
+  function renderHookCards(list) {
+    var root = document.getElementById("hookResults");
+    if (!list.length) {
+      root.innerHTML = '<p class="hint">No candidates.</p>';
+      return;
+    }
+    root.innerHTML = list.map(function (c, i) {
+      var pct = Math.max(8, Math.min(100, Math.round(c.score * 100)));
+      return (
+        '<article class="card' + (i === 0 ? " top" : "") + '">' +
+          '<div class="cardhead">' +
+            '<span class="rank">#' + (i + 1) + " · " + esc(c.pattern.name) + "</span>" +
+            badgeHtml(c.status) +
+          "</div>" +
+          '<p class="hooktext">' + esc(c.text) + "</p>" +
+          '<div class="meta">' +
+            '<span class="tag">' + esc(c.pattern.family) + "</span>" +
+            '<span class="tag">' + esc(c.mode) + "</span>" +
+            (c.winRate != null ? '<span class="tag">win ' + Math.round(c.winRate * 100) + "%</span>" : "") +
+          "</div>" +
+          '<p class="why">' + esc(c.pattern.why) + "</p>" +
+          '<p class="evidence">' + esc(evidenceLine(c)) + "</p>" +
+          '<div class="scorebar"><i style="width:' + pct + '%"></i></div>' +
+          '<div class="actions">' +
+            '<button class="btn sm primary" data-copy="' + esc(c.text) + '" type="button">Copy</button>' +
+            '<button class="btn sm" data-log-hook="' + esc(c.text) + '" data-log-pattern="' + esc(c.pattern.id) + '" data-log-family="' + esc(c.pattern.family) + '" type="button">Log outcome</button>' +
+          "</div>" +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function renderAngleCards(list) {
+    var root = document.getElementById("angleResults");
+    root.innerHTML = list.map(function (a, i) {
+      return (
+        '<article class="card">' +
+          '<div class="cardhead"><span class="rank">#' + (i + 1) + "</span></div>" +
+          '<p class="hooktext">' + esc(a.name) + "</p>" +
+          '<p class="why">' + esc(a.description) + " · " + a.count + " matching hooks</p>" +
+          (a.sample ? '<p class="evidence">Sample: “' + esc(a.sample) + "”</p>" : "") +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function renderCtaCards(list) {
+    var root = document.getElementById("ctaResults");
+    root.innerHTML = list.map(function (c, i) {
+      return (
+        '<article class="card">' +
+          '<div class="cardhead"><span class="rank">#' + (i + 1) + " · " + esc(c.name) + "</span></div>" +
+          '<p class="hooktext">' + esc(c.text) + "</p>" +
+          '<p class="why">' + esc(c.why) + "</p>" +
+          '<div class="actions"><button class="btn sm primary" data-copy="' + esc(c.text) + '" type="button">Copy</button></div>' +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function showResults(bundle) {
+    state.lastResults = bundle;
+    document.getElementById("resultsPanel").classList.remove("hidden");
+    document.getElementById("hookCount").textContent = bundle.hooks.length;
+    document.getElementById("angleCount").textContent = bundle.angles.length;
+    document.getElementById("ctaCount").textContent = bundle.ctas.length;
+    renderHookCards(bundle.hooks);
+    renderAngleCards(bundle.angles);
+    renderCtaCards(bundle.ctas);
+    // default tab
+    document.querySelectorAll("#resultTabs .tab").forEach(function (t) {
+      t.classList.toggle("active", t.getAttribute("data-tab") === "hooks");
+    });
+    document.getElementById("hookResults").classList.remove("hidden");
+    document.getElementById("angleResults").classList.add("hidden");
+    document.getElementById("ctaResults").classList.add("hidden");
+    document.getElementById("resultsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderLedger() {
+    var wins = state.ledger.filter(function (e) { return e.outcome === "winner"; }).length;
+    var meh = state.ledger.filter(function (e) { return e.outcome === "meh"; }).length;
+    var dead = state.ledger.filter(function (e) { return e.outcome === "dead"; }).length;
+    var stats = familyStats();
+    var topFam = Object.keys(stats).sort(function (a, b) {
+      return (stats[b].scoreSum / (stats[b].total || 1)) - (stats[a].scoreSum / (stats[a].total || 1));
+    })[0];
+
+    document.getElementById("ledgerStats").innerHTML =
+      '<div class="stat"><div class="n">' + state.ledger.length + '</div><div class="l">Logged</div></div>' +
+      '<div class="stat"><div class="n">' + wins + '</div><div class="l">Winners</div></div>' +
+      '<div class="stat"><div class="n">' + meh + '</div><div class="l">Meh</div></div>' +
+      '<div class="stat"><div class="n">' + dead + '</div><div class="l">Dead</div></div>' +
+      '<div class="stat"><div class="n">' + esc(topFam || "—") + '</div><div class="l">Top family</div></div>';
+
+    var list = document.getElementById("ledgerList");
+    var empty = document.getElementById("ledgerEmpty");
+    if (!state.ledger.length) {
+      list.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    list.innerHTML = state.ledger.map(function (e) {
+      var p = patternById(e.patternId);
+      return (
+        '<article class="card entry">' +
+          '<div class="cardhead">' +
+            '<span class="outcome ' + esc(e.outcome) + '">' + esc(e.outcome) + "</span>" +
+            '<button class="btn sm danger" data-del-entry="' + esc(e.id) + '" type="button">Delete</button>' +
+          "</div>" +
+          '<p class="hooktext">' + esc(e.hook) + "</p>" +
+          '<div class="meta">' +
+            '<span class="tag">' + esc(e.family || (p && p.family) || "—") + "</span>" +
+            '<span class="tag">' + esc(e.platform || "—") + "</span>" +
+            '<span class="tag">' + esc(e.niche || "—") + "</span>" +
+            (e.retention != null && e.retention !== "" ? '<span class="tag">3s ' + esc(e.retention) + "%</span>" : "") +
+            (e.views != null && e.views !== "" ? '<span class="tag">' + esc(e.views) + " views</span>" : "") +
+          "</div>" +
+          (e.notes ? '<p class="why">' + esc(e.notes) + "</p>" : "") +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function renderBank() {
+    document.getElementById("patternCount").textContent = "(" + PATTERNS.length + ")";
+    document.getElementById("patternList").innerHTML = PATTERNS.map(function (p) {
+      var stats = familyStats()[p.family];
+      var wr = stats && stats.total ? Math.round((stats.wins / stats.total) * 100) + "% personal" : "no personal data";
+      return (
+        '<article class="card">' +
+          '<div class="cardhead"><span class="rank">' + esc(p.name) + " · " + esc(p.family) + "</span>" +
+          '<span class="scorelabel">' + wr + "</span></div>" +
+          '<p class="hooktext" style="font-size:14px;font-weight:500">' + esc(p.scaffold) + "</p>" +
+          '<p class="why">' + esc(p.why) + "</p>" +
+        "</article>"
+      );
+    }).join("");
+
+    var comps = state.comps;
+    var empty = document.getElementById("compEmpty");
+    var list = document.getElementById("compList");
+    if (!comps.length) {
+      list.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    list.innerHTML = comps.map(function (c) {
+      return (
+        '<article class="card">' +
+          '<div class="cardhead">' +
+            '<span class="rank">' + esc(c.creator || "comp") + " · " + esc(c.niche || "general") + "</span>" +
+            '<button class="btn sm danger" data-del-comp="' + esc(c.id) + '" type="button">Delete</button>' +
+          "</div>" +
+          '<p class="hooktext" style="font-size:14.5px">' + esc(c.hook) + "</p>" +
+          (c.notes ? '<p class="why">' + esc(c.notes) + "</p>" : "") +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function openEntryModal(prefill) {
+    prefill = prefill || {};
+    document.getElementById("entryHook").value = prefill.hook || "";
+    if (prefill.patternId) document.getElementById("entryPattern").value = prefill.patternId;
+    document.getElementById("entryOutcome").value = prefill.outcome || "winner";
+    document.getElementById("entryRetention").value = "";
+    document.getElementById("entryViews").value = "";
+    document.getElementById("entryNotes").value = "";
+    document.getElementById("entryScrim").classList.add("open");
+  }
+
+  // ---------- settings UI ----------
+  function refreshKeyStatus() {
+    var g = document.getElementById("geminiStatus");
+    var o = document.getElementById("openrouterStatus");
+    if (settings.geminiKey) { g.textContent = "Key saved in this browser"; g.className = "keystatus set"; }
+    else { g.textContent = "Not set — free tier works for text underwriting"; g.className = "keystatus empty"; }
+    if (settings.openrouterKey) { o.textContent = "Key saved in this browser"; o.className = "keystatus set"; }
+    else { o.textContent = "Not set"; o.className = "keystatus empty"; }
+  }
+  function openSettings() {
+    document.querySelector('input[name="provider"][value="' + settings.provider + '"]').checked = true;
+    document.getElementById("geminiKey").value = settings.geminiKey || "";
+    document.getElementById("openrouterKey").value = settings.openrouterKey || "";
+    document.getElementById("openrouterModel").value = settings.openrouterModel || "openai/gpt-4o-mini";
+    document.getElementById("brandVoice").value = settings.brandVoice || "";
+    document.getElementById("geminiBlock").classList.toggle("hidden", settings.provider !== "gemini");
+    document.getElementById("openrouterBlock").classList.toggle("hidden", settings.provider !== "openrouter");
+    refreshKeyStatus();
+    document.getElementById("settingsScrim").classList.add("open");
+  }
+
+  // ---------- wire up ----------
+  function initFormOptions() {
+    fillSelect(document.getElementById("niche"), NICHES, "id", "label");
+    fillSelect(document.getElementById("platform"), PLATFORMS, "id", "label");
+    fillSelect(document.getElementById("entryPlatform"), PLATFORMS, "id", "label");
+    fillSelect(document.getElementById("entryNiche"), NICHES, "id", "label");
+    fillSelect(document.getElementById("compNiche"), NICHES, "id", "label");
+    fillSelect(document.getElementById("entryPattern"), PATTERNS.map(function (p) {
+      return { id: p.id, label: p.name + " (" + p.family + ")" };
+    }), "id", "label");
+
+    var chips = document.getElementById("angleChips");
+    chips.innerHTML = ANGLES.map(function (a) {
+      return '<button type="button" class="chip" data-angle="' + esc(a.id) + '">' + esc(a.name) + "</button>";
+    }).join("");
+  }
+
+  async function runGenerate(useAI) {
+    var topic = document.getElementById("topic").value.trim();
+    if (!topic) { toast("Add a topic / idea first"); return; }
+    var sourceMaterial = document.getElementById("sourceMaterial").value.trim();
+    var niche = document.getElementById("niche").value;
+    var platform = document.getElementById("platform").value;
+    var goal = document.getElementById("goal").value;
+    var angleIds = state.selectedAngles.slice();
+    var label = document.getElementById("genLabel");
+    var btn = document.getElementById("underwriteBtn");
+    var offlineBtn = document.getElementById("offlineBtn");
+
+    btn.disabled = true;
+    offlineBtn.disabled = true;
+
+    try {
+      if (useAI) {
+        var hasKey = settings.provider === "openrouter" ? settings.openrouterKey : settings.geminiKey;
+        if (!hasKey) {
+          toast("Add an API key in Settings, or use Offline mode");
+          openSettings();
+          return;
+        }
+        label.textContent = "Underwriting with evidence…";
+        var bundle = await underwriteWithAI(topic, sourceMaterial, niche, platform, goal, angleIds);
+        showResults(bundle);
+        toast("Ranked " + bundle.hooks.length + " candidates");
+      } else {
+        label.textContent = "Filling scaffolds from bank + ledger…";
+        await new Promise(function (r) { setTimeout(r, 120); });
+        var hooks = buildCandidatesOffline(topic, niche, platform, angleIds);
+        var bundle2 = {
+          hooks: hooks,
+          angles: buildAngles(hooks),
+          ctas: buildCtas(topic, goal)
+        };
+        showResults(bundle2);
+        toast("Offline underwrite ready");
+      }
+    } catch (err) {
+      console.error(err);
+      toast(err.message || "Underwrite failed");
+      label.textContent = "";
+    } finally {
+      btn.disabled = false;
+      offlineBtn.disabled = false;
+      label.textContent = "";
+    }
+  }
+
+  function onReady() {
+    loadSettings();
+    loadState();
+    applyTheme(localStorage.getItem(LS_THEME) || "");
+    initFormOptions();
+    setView("generate");
+
+    document.getElementById("theme").addEventListener("click", cycleTheme);
+    document.getElementById("settings").addEventListener("click", openSettings);
+    document.getElementById("openSettingsFromHint").addEventListener("click", openSettings);
+    document.getElementById("closeSettings").addEventListener("click", function () {
+      document.getElementById("settingsScrim").classList.remove("open");
+    });
+    document.getElementById("saveSettings").addEventListener("click", function () {
+      settings.provider = document.querySelector('input[name="provider"]:checked').value;
+      settings.geminiKey = document.getElementById("geminiKey").value.trim();
+      settings.openrouterKey = document.getElementById("openrouterKey").value.trim();
+      settings.openrouterModel = document.getElementById("openrouterModel").value.trim() || "openai/gpt-4o-mini";
+      settings.brandVoice = document.getElementById("brandVoice").value.trim();
+      saveSettings();
+      refreshKeyStatus();
+      document.getElementById("settingsScrim").classList.remove("open");
+      toast("Settings saved");
+    });
+    document.querySelectorAll('input[name="provider"]').forEach(function (r) {
+      r.addEventListener("change", function () {
+        var v = document.querySelector('input[name="provider"]:checked').value;
+        document.getElementById("geminiBlock").classList.toggle("hidden", v !== "gemini");
+        document.getElementById("openrouterBlock").classList.toggle("hidden", v !== "openrouter");
+      });
+    });
+    document.getElementById("toggleGemini").addEventListener("click", function () {
+      var i = document.getElementById("geminiKey");
+      i.type = i.type === "password" ? "text" : "password";
+      this.textContent = i.type === "password" ? "Show" : "Hide";
+    });
+    document.getElementById("toggleOpenrouter").addEventListener("click", function () {
+      var i = document.getElementById("openrouterKey");
+      i.type = i.type === "password" ? "text" : "password";
+      this.textContent = i.type === "password" ? "Show" : "Hide";
+    });
+
+    document.getElementById("navGenerate").addEventListener("click", function () { setView("generate"); });
+    document.getElementById("navLedger").addEventListener("click", function () { setView("ledger"); });
+    document.getElementById("navBank").addEventListener("click", function () { setView("bank"); });
+
+    document.getElementById("angleChips").addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-angle]");
+      if (!btn) return;
+      var id = btn.getAttribute("data-angle");
+      var idx = state.selectedAngles.indexOf(id);
+      if (idx >= 0) state.selectedAngles.splice(idx, 1);
+      else state.selectedAngles.push(id);
+      btn.classList.toggle("on", state.selectedAngles.indexOf(id) >= 0);
+    });
+
+    document.getElementById("underwriteBtn").addEventListener("click", function () { runGenerate(true); });
+    document.getElementById("offlineBtn").addEventListener("click", function () { runGenerate(false); });
+
+    document.getElementById("resultTabs").addEventListener("click", function (e) {
+      var tab = e.target.closest(".tab");
+      if (!tab) return;
+      var name = tab.getAttribute("data-tab");
+      document.querySelectorAll("#resultTabs .tab").forEach(function (t) {
+        t.classList.toggle("active", t === tab);
+      });
+      document.getElementById("hookResults").classList.toggle("hidden", name !== "hooks");
+      document.getElementById("angleResults").classList.toggle("hidden", name !== "angles");
+      document.getElementById("ctaResults").classList.toggle("hidden", name !== "ctas");
+    });
+
+    // delegated copy / log / delete
+    document.body.addEventListener("click", function (e) {
+      var copyBtn = e.target.closest("[data-copy]");
+      if (copyBtn) {
+        var text = copyBtn.getAttribute("data-copy");
+        navigator.clipboard.writeText(text).then(function () { toast("Copied"); }).catch(function () {
+          toast("Copy failed");
+        });
+        return;
+      }
+      var logBtn = e.target.closest("[data-log-hook]");
+      if (logBtn) {
+        openEntryModal({
+          hook: logBtn.getAttribute("data-log-hook"),
+          patternId: logBtn.getAttribute("data-log-pattern")
+        });
+        // also set family via pattern
+        var pid = logBtn.getAttribute("data-log-pattern");
+        if (pid) document.getElementById("entryPattern").value = pid;
+        return;
+      }
+      var delE = e.target.closest("[data-del-entry]");
+      if (delE) {
+        var id = delE.getAttribute("data-del-entry");
+        state.ledger = state.ledger.filter(function (x) { return x.id !== id; });
+        saveState();
+        renderLedger();
+        toast("Entry removed");
+        return;
+      }
+      var delC = e.target.closest("[data-del-comp]");
+      if (delC) {
+        var cid = delC.getAttribute("data-del-comp");
+        state.comps = state.comps.filter(function (x) { return x.id !== cid; });
+        saveState();
+        renderBank();
+        toast("Comp removed");
+      }
+    });
+
+    document.getElementById("addEntryBtn").addEventListener("click", function () { openEntryModal(); });
+    document.getElementById("closeEntry").addEventListener("click", function () {
+      document.getElementById("entryScrim").classList.remove("open");
+    });
+    document.getElementById("saveEntry").addEventListener("click", function () {
+      var hook = document.getElementById("entryHook").value.trim();
+      if (!hook) { toast("Hook text required"); return; }
+      var patternId = document.getElementById("entryPattern").value;
+      var p = patternById(patternId);
+      var entry = {
+        id: uid(),
+        hook: hook,
+        patternId: patternId,
+        family: p ? p.family : "unknown",
+        outcome: document.getElementById("entryOutcome").value,
+        platform: document.getElementById("entryPlatform").value,
+        niche: document.getElementById("entryNiche").value,
+        retention: document.getElementById("entryRetention").value,
+        views: document.getElementById("entryViews").value,
+        notes: document.getElementById("entryNotes").value.trim(),
+        createdAt: new Date().toISOString()
+      };
+      state.ledger.unshift(entry);
+      saveState();
+      document.getElementById("entryScrim").classList.remove("open");
+      renderLedger();
+      toast("Logged — ledger updated");
+    });
+
+    document.getElementById("exportLedgerBtn").addEventListener("click", function () {
+      var blob = new Blob([JSON.stringify({ ledger: state.ledger, comps: state.comps, exportedAt: new Date().toISOString() }, null, 2)], { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "hooklab-ledger.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("Exported");
+    });
+    document.getElementById("importLedgerBtn").addEventListener("click", function () {
+      document.getElementById("importFile").click();
+    });
+    document.getElementById("importFile").addEventListener("change", function (ev) {
+      var file = ev.target.files && ev.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var data = JSON.parse(reader.result);
+          if (Array.isArray(data.ledger)) state.ledger = data.ledger.concat(state.ledger);
+          if (Array.isArray(data.comps)) state.comps = data.comps.concat(state.comps);
+          // also accept bare array
+          if (Array.isArray(data) && data[0] && data[0].hook) state.ledger = data.concat(state.ledger);
+          saveState();
+          renderLedger();
+          toast("Imported");
+        } catch (err) {
+          toast("Invalid JSON");
+        }
+        ev.target.value = "";
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById("addCompBtn").addEventListener("click", function () {
+      document.getElementById("compHook").value = "";
+      document.getElementById("compCreator").value = "";
+      document.getElementById("compNotes").value = "";
+      document.getElementById("compScrim").classList.add("open");
+    });
+    document.getElementById("closeComp").addEventListener("click", function () {
+      document.getElementById("compScrim").classList.remove("open");
+    });
+    document.getElementById("saveComp").addEventListener("click", function () {
+      var hook = document.getElementById("compHook").value.trim();
+      if (!hook) { toast("Comp hook required"); return; }
+      state.comps.unshift({
+        id: uid(),
+        hook: hook,
+        creator: document.getElementById("compCreator").value.trim(),
+        niche: document.getElementById("compNiche").value,
+        notes: document.getElementById("compNotes").value.trim(),
+        createdAt: new Date().toISOString()
+      });
+      saveState();
+      document.getElementById("compScrim").classList.remove("open");
+      renderBank();
+      toast("Comp added");
+    });
+
+    // close scrims on backdrop
+    ["settingsScrim", "entryScrim", "compScrim"].forEach(function (id) {
+      document.getElementById(id).addEventListener("click", function (e) {
+        if (e.target.id === id) e.currentTarget.classList.remove("open");
+      });
+    });
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", onReady);
+  else onReady();
+})();

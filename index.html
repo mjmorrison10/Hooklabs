@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0E1116" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F5F6F8" media="(prefers-color-scheme: light)">
+<meta name="description" content="HOOKLAB by Michael Morrison — evidence-based hook underwriting for short-form creators. Proven structures + your results, not AI vibes.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%237C5CFF'/%3E%3Cpath d='M7 16V8l5 4 5-4v8' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HOOKLAB">
+<title>HOOKLAB — by Michael Morrison</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <span class="logo" id="logo"><b>MJM</b></span>
+      <span class="lock">
+        <span class="mark"><span class="dot"></span>HOOKLAB</span>
+        <span class="by">by Michael Morrison</span>
+      </span>
+    </div>
+    <div class="actions">
+      <button class="iconbtn" id="navGenerate" type="button" data-view="generate">GENERATE</button>
+      <button class="iconbtn" id="navLedger" type="button" data-view="ledger">LEDGER</button>
+      <button class="iconbtn" id="navBank" type="button" data-view="bank">BANK</button>
+      <button class="iconbtn" id="settings" title="Settings" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        SETTINGS
+      </button>
+      <button class="iconbtn" id="theme" type="button">THEME</button>
+    </div>
+  </div>
+  <p class="lede">Not an AI hook generator — a <b>hook underwriting engine</b>. HOOKLAB retrieves proven
+    structures, grounds them in evidence (your winners, comps, source material), ranks candidates by proof,
+    and learns from outcomes. AI only does the glue. Your ledger replaces the Excel sheet.</p>
+
+  <!-- GENERATE VIEW -->
+  <section class="view" id="viewGenerate">
+    <section class="panel">
+      <div class="panelhead">
+        <span class="step">Brief</span>
+        <h2>What are you making?</h2>
+      </div>
+      <div class="fieldgrid">
+        <div class="field">
+          <label for="topic">Topic / idea</label>
+          <textarea id="topic" placeholder="e.g. Why most creators waste hours writing weak openings, and how an evidence ledger fixes it."></textarea>
+        </div>
+        <div class="field">
+          <label for="sourceMaterial">Source material <span class="opt">(optional)</span></label>
+          <textarea id="sourceMaterial" placeholder="Paste a RECALL export, transcript lines, notes, or quotes to ground the hooks in real specifics."></textarea>
+        </div>
+      </div>
+      <div class="fieldrow">
+        <div class="field">
+          <label for="niche">Niche</label>
+          <select id="niche"></select>
+        </div>
+        <div class="field">
+          <label for="platform">Platform</label>
+          <select id="platform"></select>
+        </div>
+        <div class="field">
+          <label for="goal">Goal</label>
+          <select id="goal">
+            <option value="retention">Hold 3s retention</option>
+            <option value="comments">Drive comments</option>
+            <option value="saves">Drive saves</option>
+            <option value="authority">Build authority</option>
+            <option value="series">Start a series</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Preferred angles <span class="opt">(optional — leave empty for full coverage)</span></label>
+        <div class="chiprow" id="angleChips"></div>
+      </div>
+      <div class="actionrow" style="margin-top:16px">
+        <button class="btn primary" id="underwriteBtn" type="button">Underwrite hooks →</button>
+        <button class="btn ghost" id="offlineBtn" type="button">Offline (no AI)</button>
+        <span class="progress" id="genLabel"></span>
+      </div>
+      <p class="hint" style="margin-top:12px">
+        Offline mode fills scaffolds from the pattern bank + your ledger only — no API key needed.
+        AI mode rewrites with grounded specifics. Either way, every card shows provenance.
+        <button class="linkbtn" id="openSettingsFromHint" type="button">Add a key in Settings</button>
+        for AI mode.
+      </p>
+    </section>
+
+    <section class="panel hidden" id="resultsPanel">
+      <div class="panelhead">
+        <span class="step">Candidates</span>
+        <h2>Ranked by proof, not vibes</h2>
+      </div>
+      <div class="legend">
+        <span class="badge proven">Proven for you</span>
+        <span class="badge market">Market-proven structure</span>
+        <span class="badge hypo">Hypothesis</span>
+        <span class="badge fatigued">Fatigued</span>
+      </div>
+      <div class="tabs" id="resultTabs">
+        <button class="tab active" data-tab="hooks" type="button">Hooks <span id="hookCount">0</span></button>
+        <button class="tab" data-tab="angles" type="button">Angles <span id="angleCount">0</span></button>
+        <button class="tab" data-tab="ctas" type="button">CTAs <span id="ctaCount">0</span></button>
+      </div>
+      <div id="hookResults" class="cardlist"></div>
+      <div id="angleResults" class="cardlist hidden"></div>
+      <div id="ctaResults" class="cardlist hidden"></div>
+    </section>
+  </section>
+
+  <!-- LEDGER VIEW -->
+  <section class="view hidden" id="viewLedger">
+    <section class="panel">
+      <div class="panelhead">
+        <span class="step">Ledger</span>
+        <h2>Your personal proof</h2>
+      </div>
+      <p class="hint" style="margin-top:-6px;margin-bottom:14px">
+        This is the spreadsheet you never want to maintain by hand. Log winners, mehs, and dead posts.
+        HOOKLAB uses this to promote/demote patterns for <em>you</em>.
+      </p>
+      <div class="stats" id="ledgerStats"></div>
+      <div class="actionrow" style="margin:14px 0">
+        <button class="btn primary" id="addEntryBtn" type="button">+ Log a post</button>
+        <button class="btn ghost" id="exportLedgerBtn" type="button">Export JSON</button>
+        <button class="btn ghost" id="importLedgerBtn" type="button">Import JSON</button>
+        <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+      </div>
+      <div id="ledgerList" class="cardlist"></div>
+      <p class="hint" id="ledgerEmpty">No entries yet. Log 10–20 past posts to unlock “Proven for you” badges.</p>
+    </section>
+  </section>
+
+  <!-- BANK VIEW -->
+  <section class="view hidden" id="viewBank">
+    <section class="panel">
+      <div class="panelhead">
+        <span class="step">Bank</span>
+        <h2>Curated pattern library</h2>
+      </div>
+      <p class="hint" style="margin-top:-6px;margin-bottom:14px">
+        Structures, not full sentences. AI never invents the pattern — it only fills slots and rewrites
+        with your evidence. Comps you add become market evidence.
+      </p>
+      <div class="actionrow" style="margin-bottom:14px">
+        <button class="btn primary" id="addCompBtn" type="button">+ Add competitor / market comp</button>
+      </div>
+      <div class="subpanel">
+        <h3>Your comps</h3>
+        <div id="compList" class="cardlist"></div>
+        <p class="hint" id="compEmpty">No comps yet. Paste hooks that worked in your niche.</p>
+      </div>
+      <div class="subpanel" style="margin-top:14px">
+        <h3>Pattern bank <span class="opt" id="patternCount"></span></h3>
+        <div id="patternList" class="cardlist"></div>
+      </div>
+    </section>
+  </section>
+
+  <footer class="foot">
+    <div>
+      <div class="fname">Michael Morrison</div>
+      <div class="ftag">AI-assisted growth for creators — RECALL finds the moment, HOOKLAB underwrites the open, BLAST ships it everywhere.</div>
+    </div>
+    <a class="fcta" href="https://mjmorrisonusa.com" target="_blank" rel="noopener">mjmorrisonusa.com →</a>
+  </footer>
+</div>
+
+<!-- Settings modal -->
+<div class="scrim" id="settingsScrim">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <h2 id="settingsTitle">Settings</h2>
+    <div class="mbody">
+      <div>
+        <label>AI provider</label>
+        <div class="providerrow">
+          <label class="radiopill"><input type="radio" name="provider" value="gemini" checked>Gemini <span class="pilltag">default</span></label>
+          <label class="radiopill"><input type="radio" name="provider" value="openrouter">OpenRouter</label>
+        </div>
+      </div>
+      <div id="geminiBlock">
+        <label for="geminiKey">Gemini API key</label>
+        <div class="keyrow">
+          <input id="geminiKey" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
+          <button type="button" id="toggleGemini">Show</button>
+        </div>
+        <div class="keystatus empty" id="geminiStatus">Not set — free tier works for text underwriting</div>
+      </div>
+      <div id="openrouterBlock" class="hidden">
+        <label for="openrouterKey">OpenRouter API key</label>
+        <div class="keyrow">
+          <input id="openrouterKey" type="password" placeholder="sk-or-…" autocomplete="off" spellcheck="false">
+          <button type="button" id="toggleOpenrouter">Show</button>
+        </div>
+        <div class="keystatus empty" id="openrouterStatus">Not set</div>
+        <label for="openrouterModel" style="margin-top:10px;display:block">Model</label>
+        <input id="openrouterModel" type="text" placeholder="openai/gpt-4o-mini" value="openai/gpt-4o-mini">
+      </div>
+      <div>
+        <label for="brandVoice">Brand voice notes <span class="opt">(optional)</span></label>
+        <textarea id="brandVoice" placeholder="e.g. Punchy, no emojis, talk like a coach, never say 'game-changer'."></textarea>
+      </div>
+      <p class="hint">Keys stay in this browser’s localStorage and are sent only to the provider you pick — never to a HOOKLAB server, because there isn’t one.</p>
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost" id="closeSettings" type="button">Close</button>
+      <button class="btn primary" id="saveSettings" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log entry modal -->
+<div class="scrim" id="entryScrim">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2 id="entryTitle">Log a post</h2>
+    <div class="mbody">
+      <div>
+        <label for="entryHook">Hook / opening line</label>
+        <textarea id="entryHook" placeholder="The exact line you opened with"></textarea>
+      </div>
+      <div class="fieldrow">
+        <div class="field">
+          <label for="entryPattern">Pattern family</label>
+          <select id="entryPattern"></select>
+        </div>
+        <div class="field">
+          <label for="entryOutcome">Outcome</label>
+          <select id="entryOutcome">
+            <option value="winner">Winner</option>
+            <option value="meh">Meh</option>
+            <option value="dead">Dead</option>
+          </select>
+        </div>
+      </div>
+      <div class="fieldrow">
+        <div class="field">
+          <label for="entryPlatform">Platform</label>
+          <select id="entryPlatform"></select>
+        </div>
+        <div class="field">
+          <label for="entryNiche">Niche</label>
+          <select id="entryNiche"></select>
+        </div>
+      </div>
+      <div class="fieldrow">
+        <div class="field">
+          <label for="entryRetention">3s retention % <span class="opt">(optional)</span></label>
+          <input id="entryRetention" type="number" min="0" max="100" placeholder="e.g. 72">
+        </div>
+        <div class="field">
+          <label for="entryViews">Views <span class="opt">(optional)</span></label>
+          <input id="entryViews" type="number" min="0" placeholder="e.g. 12400">
+        </div>
+      </div>
+      <div>
+        <label for="entryNotes">Notes <span class="opt">(optional)</span></label>
+        <input id="entryNotes" type="text" placeholder="What worked / what flopped">
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost" id="closeEntry" type="button">Cancel</button>
+      <button class="btn primary" id="saveEntry" type="button">Save to ledger</button>
+    </div>
+  </div>
+</div>
+
+<!-- Comp modal -->
+<div class="scrim" id="compScrim">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h2>Add market comp</h2>
+    <div class="mbody">
+      <div>
+        <label for="compHook">Hook that worked</label>
+        <textarea id="compHook" placeholder="Paste the opening line"></textarea>
+      </div>
+      <div class="fieldrow">
+        <div class="field">
+          <label for="compCreator">Creator / source <span class="opt">(optional)</span></label>
+          <input id="compCreator" type="text" placeholder="@handle or channel">
+        </div>
+        <div class="field">
+          <label for="compNiche">Niche</label>
+          <select id="compNiche"></select>
+        </div>
+      </div>
+      <div>
+        <label for="compNotes">Why it worked <span class="opt">(optional)</span></label>
+        <input id="compNotes" type="text" placeholder="e.g. Specific number + contrarian claim">
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn ghost" id="closeComp" type="button">Cancel</button>
+      <button class="btn primary" id="saveComp" type="button">Add comp</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

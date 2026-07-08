@@ -1,0 +1,12 @@
+{
+  "name": "HOOKLAB",
+  "short_name": "HOOKLAB",
+  "description": "Evidence-based hook underwriting for short-form creators. Not AI vibes — proven structures + your results.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0E1116",
+  "theme_color": "#0E1116",
+  "categories": ["productivity", "utilities"]
+}
