@@ -21,7 +21,8 @@ export var MECHANISMS = [
   { id: "authority", name: "Authority / behind curtain", job: "Process transparency builds trust" },
   { id: "warning", name: "Warning / protective framing", job: "Urgency without pure hype" },
   { id: "identity", name: "Identity / POV", job: "Viewer recognizes themselves" },
-  { id: "mistake", name: "Mistake / cost of wrong", job: "Loss aversion + correction" }
+  { id: "mistake", name: "Mistake / cost of wrong", job: "Loss aversion + correction" },
+  { id: "thread", name: "Thread / serialized text", job: "Promise a multi-post payoff worth the tap-through" }
 ];
 
 function P(o) {
@@ -32,6 +33,7 @@ function P(o) {
     evidence: "market-observed",
     era: "modern",
     platforms: ["tiktok", "reels", "shorts"],
+    mediums: ["video", "text"],
     spoken: true,
     textOnScreen: true,
     niches: ["general"],
@@ -76,7 +78,7 @@ export var PATTERNS = [
   P({ id: "mid-action", name: "Mid-Action Open", family: "interrupt", mechanism: "interrupt", tier: "core",
     scaffold: "—and that's the moment everything flipped.", slots: [],
     why: "Starts on the payoff, not the setup",
-    niches: ["story", "creators", "business", "general"], strength: 0.82, textOnScreen: false }),
+    niches: ["story", "creators", "business", "general"], strength: 0.82, textOnScreen: false, mediums: ["video"] }),
 
   P({ id: "industry-secret", name: "Industry Secret", family: "curiosity", mechanism: "curiosity", tier: "core",
     scaffold: "The {industry} industry doesn't want you to know this.", slots: ["industry"],
@@ -152,7 +154,7 @@ export var PATTERNS = [
   P({ id: "pov-identity", name: "POV / Identity", family: "identity", mechanism: "identity", tier: "core",
     scaffold: "POV: you're a {identity} who finally {win}.", slots: ["identity", "win"],
     why: "Self-selection keeps the right people watching",
-    niches: ["creators", "fitness", "business", "general"], strength: 0.78, spoken: false }),
+    niches: ["creators", "fitness", "business", "general"], strength: 0.78, spoken: false, mediums: ["video"] }),
 
   P({ id: "comment-trap", name: "Comment Trap", family: "engagement", mechanism: "engagement", tier: "core",
     scaffold: "Tell me I'm wrong: {claim}.", slots: ["claim"],
@@ -163,7 +165,7 @@ export var PATTERNS = [
   P({ id: "silent-open", name: "Silent Pattern Interrupt", family: "interrupt", mechanism: "interrupt", tier: "core",
     scaffold: "[Silence / visual first] Then: {line}", slots: ["line"],
     why: "Unexpected quiet on noisy feeds holds attention",
-    niches: ["creators", "story", "general"], strength: 0.76 }),
+    niches: ["creators", "story", "general"], strength: 0.76, mediums: ["video"] }),
 
   P({ id: "checklist-promise", name: "Checklist Promise", family: "value", mechanism: "value", tier: "core",
     scaffold: "Save this checklist before your next {event}.", slots: ["event"],
@@ -218,6 +220,98 @@ export var PATTERNS = [
     platforms: ["tiktok", "reels", "shorts", "youtube", "linkedin"],
     relatedCore: ["curiosity-gap", "mistake-callout", "industry-secret"] }),
 
+  // ========== TEXT-NATIVE (written posts: X / Threads / LinkedIn) ==========
+  P({ id: "thread-lessons", name: "Thread Opener: Earned Lessons", family: "thread", mechanism: "thread", tier: "core",
+    scaffold: "{n} lessons from {done_thing} that most {audience} learn too late. A thread:", slots: ["n", "done_thing", "audience"],
+    why: "Credential + numbered promise + explicit serial commitment — the opener underwrites a tap-through, not a 3-second hold",
+    niches: ["business", "creators", "finance", "general"], strength: 0.86,
+    platforms: ["x", "threads"], mediums: ["text"] }),
+
+  P({ id: "how-i-thread", name: "Thread Opener: Exact Steps", family: "thread", mechanism: "thread", tier: "core",
+    scaffold: "How I went from {start} to {end} in {timeframe} — the exact steps:", slots: ["start", "end", "timeframe"],
+    why: "Bounded transformation + 'exact steps' kills the vague-guru objection before the first reply",
+    niches: ["business", "creators", "finance", "fitness", "general"], strength: 0.87,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"] }),
+
+  P({ id: "thread-mistakes", name: "Thread Opener: Expensive Mistakes", family: "thread", mechanism: "thread", tier: "extended",
+    scaffold: "I spent {cost} learning {domain}. These {n} mistakes were 90% of it:", slots: ["cost", "domain", "n"],
+    why: "Paid-tuition framing — the cost is the proof, the mistakes are the curriculum",
+    niches: ["business", "finance", "creators", "general"], strength: 0.84,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"] }),
+
+  P({ id: "one-line-contrarian", name: "One-Line Banger", family: "contrarian", mechanism: "contrarian", tier: "core",
+    scaffold: "Hard truth: {claim}.", slots: ["claim"],
+    why: "A single unhedged sentence is the native X unit — quote-posts and angry replies do the distribution",
+    niches: ["business", "creators", "finance", "fitness", "general"], strength: 0.85,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"] }),
+
+  P({ id: "everyone-is-wrong", name: "Everyone Is Wrong", family: "contrarian", mechanism: "contrarian", tier: "extended",
+    scaffold: "Everyone tells you to {common_advice}. Everyone is wrong. Here's what actually works:", slots: ["common_advice"],
+    why: "Mass-consensus challenge + immediate promise of the replacement — contrarian with a payoff attached",
+    niches: ["business", "creators", "fitness", "finance", "general"], strength: 0.82,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"] }),
+
+  P({ id: "list-colon-promise", name: "Colon List Promise", family: "value", mechanism: "value", tier: "core",
+    scaffold: "{n} {things} I'd use to {goal} if I started from zero:", slots: ["n", "things", "goal"],
+    why: "The trailing colon is text-native scroll-stop punctuation — the post visibly continues below the fold",
+    niches: ["creators", "business", "tech", "general"], strength: 0.84,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"] }),
+
+  P({ id: "cheat-sheet", name: "Cheat Sheet Drop", family: "value", mechanism: "value", tier: "extended",
+    scaffold: "The {domain} cheat sheet I wish I had at {starting_point}:", slots: ["domain", "starting_point"],
+    why: "Screenshot-bait: dense utility framed as the shortcut past the author's own wasted time",
+    niches: ["creators", "business", "tech", "finance", "general"], strength: 0.83,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"] }),
+
+  P({ id: "nobody-tells-you", name: "Nobody Tells You", family: "curiosity", mechanism: "curiosity", tier: "core",
+    scaffold: "What nobody tells you about {topic}:", slots: ["topic"],
+    why: "Open loop + implied insider knowledge in seven words — the colon does the cliffhanger work in text",
+    niches: ["business", "creators", "fitness", "finance", "general"], strength: 0.85,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"],
+    relatedCore: ["curiosity-gap", "industry-secret"] }),
+
+  P({ id: "read-that-again", name: "Read That Again", family: "proof", mechanism: "proof", tier: "core",
+    scaffold: "{shock_stat}. Read that again.", slots: ["shock_stat"],
+    why: "Forces a second pass over one concrete number — dwell time is the text feed's retention metric",
+    niches: ["business", "finance", "creators", "general"], strength: 0.84,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"] }),
+
+  P({ id: "open-books", name: "Open Books", family: "proof", mechanism: "proof", tier: "extended",
+    scaffold: "I'm posting my real {metric} numbers. No blur. {n} takeaways:", slots: ["metric", "n"],
+    why: "Radical transparency pre-empts the 'fake screenshot' reflex text audiences have built",
+    niches: ["business", "creators", "finance", "general"], strength: 0.83,
+    platforms: ["x", "linkedin", "threads"], mediums: ["text"] }),
+
+  P({ id: "arc-playbook", name: "Arc + Playbook", family: "story", mechanism: "story", tier: "core",
+    scaffold: "In {time_a} I {low}. Today I {high}. The whole playbook:", slots: ["time_a", "low", "high"],
+    why: "LinkedIn-native compressed arc; ending on 'playbook' converts the story into promised utility",
+    niches: ["business", "story", "creators", "finance", "general"], strength: 0.85,
+    platforms: ["linkedin", "x", "threads"], mediums: ["text"] }),
+
+  P({ id: "setback-lesson", name: "Setback Lesson", family: "story", mechanism: "story", tier: "extended",
+    scaffold: "I got {setback} last {timeframe}. Here's what it taught me about {domain}.", slots: ["setback", "timeframe", "domain"],
+    why: "Vulnerability-first posts consistently outperform wins on LinkedIn — loss opens, lesson pays",
+    niches: ["story", "business", "creators", "general"], strength: 0.8,
+    platforms: ["linkedin", "threads", "x"], mediums: ["text"] }),
+
+  P({ id: "fill-in-blank", name: "Fill in the Blank", family: "engagement", mechanism: "engagement", tier: "extended",
+    scaffold: "The most underrated {category} is ______.", slots: ["category"],
+    why: "The blank is a reply form field — lowest-friction comment prompt that exists in text",
+    niches: ["creators", "business", "tech", "general"], strength: 0.77,
+    platforms: ["x", "threads", "linkedin"], mediums: ["text"] }),
+
+  P({ id: "quote-repost-setup", name: "Quote-Post Setup", family: "engagement", mechanism: "engagement", tier: "extended",
+    scaffold: "Quote this with your {thing} — I'll rank the best ones.", slots: ["thing"],
+    why: "Engineered quote-posts: every response re-broadcasts the original to a new graph",
+    niches: ["creators", "business", "general"], strength: 0.78,
+    platforms: ["x", "threads"], mediums: ["text"] }),
+
+  P({ id: "delete-this-later", name: "Delete This Later", family: "interrupt", mechanism: "interrupt", tier: "extended",
+    scaffold: "I'll probably delete this, but {confession}.", slots: ["confession"],
+    why: "Manufactured ephemerality — perceived risk makes a plain confession feel like leaked intel",
+    niches: ["story", "creators", "business", "general"], strength: 0.76,
+    platforms: ["x", "threads"], mediums: ["text"] }),
+
   // ========== EXTENDED ==========
   P({ id: "odd-number-list", name: "Odd-Number List", family: "value", mechanism: "value", tier: "extended",
     scaffold: "{odd_n} weirdly effective ways to {goal}.", slots: ["odd_n", "goal"],
@@ -267,7 +361,7 @@ export var PATTERNS = [
   P({ id: "loop-callback", name: "Loop / Callback", family: "interrupt", mechanism: "interrupt", tier: "extended",
     scaffold: "[End line matches open] — wait for the loop.", slots: [],
     why: "Rewatch bait via structural loop",
-    niches: ["creators", "story", "general"], strength: 0.77, evidence: "market-observed" }),
+    niches: ["creators", "story", "general"], strength: 0.77, evidence: "market-observed", mediums: ["video"] }),
 
   P({ id: "wrong-then-right", name: "Wrong, Then Right", family: "mistake", mechanism: "mistake", tier: "extended",
     scaffold: "I got {topic} completely wrong. Here's the fix.", slots: ["topic"],
@@ -342,7 +436,7 @@ export var PATTERNS = [
   P({ id: "visual-first-claim", name: "Visual-First Claim", family: "interrupt", mechanism: "interrupt", tier: "extended",
     scaffold: "[Show result first] Voiceover: this took {timeframe}.", slots: ["timeframe"],
     why: "Payoff before explanation fights swipe",
-    niches: ["fitness", "creators", "tech", "general"], strength: 0.84, spoken: true }),
+    niches: ["fitness", "creators", "tech", "general"], strength: 0.84, spoken: true, mediums: ["video"] }),
 
   P({ id: "comment-prompt-split", name: "A/B Comment Split", family: "engagement", mechanism: "engagement", tier: "extended",
     scaffold: "Team A: {option_a}. Team B: {option_b}. Fight.", slots: ["option_a", "option_b"],
@@ -394,7 +488,7 @@ export var PATTERNS = [
   P({ id: "first-second-script", name: "First-Second Script", family: "interrupt", mechanism: "interrupt", tier: "extended",
     scaffold: "Second 0: {visual_shock}. Second 1: {claim}.", slots: ["visual_shock", "claim"],
     why: "Forces shot-level hook design",
-    niches: ["creators", "general"], strength: 0.82 }),
+    niches: ["creators", "general"], strength: 0.82, mediums: ["video"] }),
 
   P({ id: "niche-math", name: "Niche Math", family: "proof", mechanism: "proof", tier: "extended",
     scaffold: "{small_niche} × {high_intent} beats {big_audience} every time.", slots: ["small_niche", "high_intent", "big_audience"],
@@ -404,7 +498,7 @@ export var PATTERNS = [
   P({ id: "voiceover-vs-text", name: "Spoken vs Text Hook", family: "value", mechanism: "value", tier: "extended",
     scaffold: "Say this out loud: \"{spoken}\". Put this on screen: \"{text}\".", slots: ["spoken", "text"],
     why: "Platform-native dual-channel open",
-    niches: ["creators", "general"], strength: 0.8 }),
+    niches: ["creators", "general"], strength: 0.8, mediums: ["video"] }),
 
   P({ id: "deadline-energy", name: "Deadline Energy", family: "warning", mechanism: "warning", tier: "extended",
     scaffold: "You have until {deadline} before {consequence}.", slots: ["deadline", "consequence"],
@@ -471,7 +565,7 @@ export var PATTERNS = [
     scaffold: "[Demo the result] — now I'll show how.", slots: [],
     why: "Show-don't-tell from product demos and TV spots; short-form native",
     niches: ["tech", "fitness", "creators", "general"], strength: 0.89,
-    evidence: "historically-documented", era: "TV demo→TikTok" }),
+    evidence: "historically-documented", era: "TV demo→TikTok", mediums: ["video"] }),
 
   P({ id: "before-after-bridge", name: "Before–After–Bridge", family: "story", mechanism: "story", tier: "historical",
     scaffold: "Before: {before}. After: {after}. The bridge was {bridge}.", slots: ["before", "after", "bridge"],
@@ -771,17 +865,21 @@ export var ANGLES = [
   { id: "teardown", name: "Teardown / mistake", description: "Show what people get wrong", patternFamilies: ["mistake", "warning", "diagnosis"] },
   { id: "proof", name: "Proof / experiment", description: "Lead with results, tests, numbers", patternFamilies: ["proof", "value"] },
   { id: "story", name: "Story / origin", description: "Personal arc and turning points", patternFamilies: ["story", "identity", "interrupt"] },
-  { id: "tactical", name: "Tactical checklist", description: "Steal-this utility and lists", patternFamilies: ["value", "engagement"] },
+  { id: "tactical", name: "Tactical checklist", description: "Steal-this utility and lists", patternFamilies: ["value", "engagement", "thread"] },
   { id: "diagnosis", name: "Diagnosis / named fear", description: "Name the unnamed problem (halitosis lineage)", patternFamilies: ["diagnosis", "curiosity", "mistake"] }
 ];
 
 export var CTA_PATTERNS = [
-  { id: "question", name: "Question bait", scaffold: "What would you try first — {a} or {b}?", why: "Forces a binary reply" },
-  { id: "disagree", name: "Disagree bait", scaffold: "Agree or roast me in the comments.", why: "Polarization = comments" },
-  { id: "save", name: "Save for later", scaffold: "Save this before you need it at 11pm.", why: "Saves are a strong ranking signal" },
-  { id: "duet", name: "Stitch / reply invite", scaffold: "Stitch this with your version.", why: "Platform-native distribution" },
-  { id: "follow-series", name: "Series follow", scaffold: "Part 1. Follow for the rest.", why: "Converts viewers into subscribers" },
-  { id: "tag", name: "Tag someone", scaffold: "Tag the person who needs this today.", why: "Network spread via social proof" }
+  { id: "question", name: "Question bait", scaffold: "What would you try first — {a} or {b}?", why: "Forces a binary reply", mediums: ["video", "text"] },
+  { id: "disagree", name: "Disagree bait", scaffold: "Agree or roast me in the comments.", why: "Polarization = comments", mediums: ["video", "text"] },
+  { id: "save", name: "Save for later", scaffold: "Save this before you need it at 11pm.", why: "Saves are a strong ranking signal", mediums: ["video"] },
+  { id: "duet", name: "Stitch / reply invite", scaffold: "Stitch this with your version.", why: "Platform-native distribution", mediums: ["video"] },
+  { id: "follow-series", name: "Series follow", scaffold: "Part 1. Follow for the rest.", why: "Converts viewers into subscribers", mediums: ["video", "text"] },
+  { id: "tag", name: "Tag someone", scaffold: "Tag the person who needs this today.", why: "Network spread via social proof", mediums: ["video", "text"] },
+  { id: "reply-take", name: "Reply bait", scaffold: "Agree or disagree? One sentence, in the replies.", why: "A binary ask with a size limit — replies are the strongest text ranking signal", mediums: ["text"] },
+  { id: "repost-if", name: "Repost if", scaffold: "Repost this if you'd rather {a} than {b}.", why: "Identity-flag repost: sharers self-select and broadcast the post as a badge", mediums: ["text"] },
+  { id: "bookmark", name: "Bookmark bait", scaffold: "Bookmark this for the next time you {action}.", why: "Bookmarks are the save-signal of text platforms — future-need framing drives them", mediums: ["text"] },
+  { id: "quote-take", name: "Quote with your take", scaffold: "Quote this with the take you're scared to post.", why: "Quote-posts spawn derivative reach — each one re-surfaces the original", mediums: ["text"] }
 ];
 
 export var NICHES = [
@@ -795,13 +893,25 @@ export var NICHES = [
 ];
 
 export var PLATFORMS = [
-  { id: "tiktok", label: "TikTok" },
-  { id: "reels", label: "Instagram Reels" },
-  { id: "shorts", label: "YouTube Shorts" },
-  { id: "youtube", label: "YouTube" },
-  { id: "linkedin", label: "LinkedIn" },
-  { id: "x", label: "X" }
+  { id: "tiktok", label: "TikTok", medium: "video" },
+  { id: "reels", label: "Instagram Reels", medium: "video" },
+  { id: "shorts", label: "YouTube Shorts", medium: "video" },
+  { id: "youtube", label: "YouTube", medium: "video" },
+  { id: "linkedin", label: "LinkedIn", medium: "text" },
+  { id: "x", label: "X", medium: "text" },
+  { id: "threads", label: "Threads", medium: "text" }
 ];
+
+export var MEDIUMS = {
+  text: { id: "text", label: "Text post", icon: "✍️" },
+  video: { id: "video", label: "Video open", icon: "🎬" }
+};
+
+export function mediumForPlatform(platformId) {
+  for (var i = 0; i < PLATFORMS.length; i++)
+    if (PLATFORMS[i].id === platformId) return PLATFORMS[i].medium || "video";
+  return "video"; // unknown/legacy → video
+}
 
 export var OUTCOMES = [
   { id: "winner", label: "Winner", score: 1.0, color: "pos" },
