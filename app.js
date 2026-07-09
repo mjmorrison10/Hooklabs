@@ -44,7 +44,26 @@ import {
     } catch (e) {}
   }
   function saveSettings() {
-    localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+    // Guard the write: a full/blocked store (Safari private mode, quota) would
+    // otherwise throw uncaught and silently drop the just-entered API key.
+    try {
+      localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+      return true;
+    } catch (e) {
+      toast("Couldn't save settings — storage full or blocked");
+      return false;
+    }
+  }
+  // Sanitize ledger entries coming from an imported JSON file: every entry must
+  // have a `hook` string and an `id` (so Delete targets it individually rather
+  // than matching the empty-id bucket). Objects without a hook are discarded.
+  function normalizeLedgerImport(arr) {
+    return (arr || []).filter(function (e) {
+      return e && typeof e.hook === "string" && e.hook.trim();
+    }).map(function (e) {
+      if (!e.id) e.id = uid();
+      return e;
+    });
   }
   function loadState() {
     try {
@@ -57,10 +76,19 @@ import {
     } catch (e) {}
   }
   function saveState() {
-    localStorage.setItem(LS_STATE, JSON.stringify({
-      ledger: state.ledger,
-      comps: state.comps
-    }));
+    // Guard the write (see saveSettings): an uncaught throw here used to leave
+    // the save modal stuck open with the ledger entry only in memory, lost on
+    // reload — and tempted the user into pushing duplicates by retrying.
+    try {
+      localStorage.setItem(LS_STATE, JSON.stringify({
+        ledger: state.ledger,
+        comps: state.comps
+      }));
+      return true;
+    } catch (e) {
+      toast("Couldn't save — storage full or blocked");
+      return false;
+    }
   }
 
   // ---------- theme ----------
@@ -584,8 +612,13 @@ import {
     var candidates = (parsed.hooks || []).map(function (h) {
       var item = byId[h.patternId];
       if (!item) {
-        // fallback: try match by name
-        item = selected.find(function (s) { return s.pattern.name === h.patternId; }) || selected[0];
+        // Try matching by name, but DON'T fall back to selected[0]: attaching a
+        // hook to an arbitrary pattern would show it with provenance (win-rate,
+        // "proven" badge, evidence) it never earned — violating the core rule
+        // that every candidate's provenance is real. Drop it instead; the
+        // offline fill pass below supplies a correctly-labeled hook for any
+        // pattern slot this leaves empty.
+        item = selected.find(function (s) { return s.pattern.name === h.patternId; });
       }
       if (!item) return null;
       var text = (h.text || "").trim() || offlineFill(item.pattern, topic);
@@ -1114,6 +1147,11 @@ import {
   function onReady() {
     loadSettings();
     loadState();
+    // Persist the ledger key on first open so companion apps (RECALL Top Clips
+    // reads localStorage["hooklab_state_v1"]) can detect that HOOKLAB has been
+    // opened on this device — previously the key only appeared after the user
+    // saved a ledger/comp entry, so "open HOOKLAB once" did nothing.
+    if (localStorage.getItem(LS_STATE) == null) saveState();
     applyTheme(localStorage.getItem(LS_THEME) || "");
     initFormOptions();
     document.getElementById("platform").addEventListener("change", updateMediumHint);
@@ -1232,6 +1270,9 @@ import {
       var copyBtn = e.target.closest("[data-copy]");
       if (copyBtn) {
         var text = copyBtn.getAttribute("data-copy");
+        // navigator.clipboard is undefined on insecure contexts / old WebViews —
+        // reading .writeText off it would throw past the .catch below.
+        if (!navigator.clipboard) { toast("Copy not supported here — select the text manually"); return; }
         navigator.clipboard.writeText(text).then(function () { toast("Copied"); }).catch(function () {
           toast("Copy failed");
         });
@@ -1316,13 +1357,21 @@ import {
       reader.onload = function () {
         try {
           var data = JSON.parse(reader.result);
-          if (Array.isArray(data.ledger)) state.ledger = data.ledger.concat(state.ledger);
-          if (Array.isArray(data.comps)) state.comps = data.comps.concat(state.comps);
-          // also accept bare array
-          if (Array.isArray(data) && data[0] && data[0].hook) state.ledger = data.concat(state.ledger);
+          // Normalize imported entries: an entry missing `id` would render an
+          // empty data-del attribute, and Delete (filter x.id !== "") would then
+          // wipe every *real* entry. Assign ids and drop shapeless objects.
+          var importLedger = normalizeLedgerImport(
+            Array.isArray(data) ? data : (Array.isArray(data.ledger) ? data.ledger : [])
+          );
+          if (importLedger.length) state.ledger = importLedger.concat(state.ledger);
+          if (Array.isArray(data.comps)) {
+            var importComps = data.comps.filter(function (c) { return c && c.hook; })
+              .map(function (c) { if (!c.id) c.id = uid(); return c; });
+            state.comps = importComps.concat(state.comps);
+          }
           saveState();
           renderLedger();
-          toast("Imported");
+          toast(importLedger.length + " ledger entr" + (importLedger.length === 1 ? "y" : "ies") + " imported");
         } catch (err) {
           toast("Invalid JSON");
         }
