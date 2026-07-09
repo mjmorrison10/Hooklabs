@@ -4,7 +4,13 @@
 
 Not another AI hook generator. HOOKLAB retrieves proven structures, grounds them in evidence (your winners, market comps, source material), ranks candidates by proof, and learns from outcomes. AI only does the glue.
 
-RECALL finds the moment. **HOOKLAB underwrites the open.** BLAST ships it everywhere.
+Creator operations systems — RECALL finds it, **HOOKLAB underwrites the open,** BLAST gets it out the door.
+
+Part of the stack:
+
+- **RECALL** — finds the moment: https://mjmorrisonusa.com/#/recall
+- **BLAST** — gets it out the door: https://mjmorrisonusa.com/#/blast
+- **Portfolio** — https://mjmorrisonusa.com
 
 ## The problem it solves
 
