@@ -23,3 +23,18 @@ For big or risky work, follow this workflow. Small, low-risk tasks skip it — j
 - Personal ledger > market comps > generic pattern strength.
 - AI fills scaffolds; it does not invent the pattern set.
 - Stay complementary to BLAST (posting command center) and RECALL (clip memory).
+
+## Standing workflow preferences (all sessions)
+
+- **Branching:** always `git fetch origin` first (local refs go stale),
+  then a fresh `claude/<feature>` branch off `origin/main` — one branch
+  per feature. Never reuse a branch whose PR has merged; never force-push.
+- **Shipping:** push with `-u`, open a PR, squash-merge. GitHub Pages
+  deploys from main — after merging, poll the live URL with a
+  cache-buster until the change is verifiably live.
+- **Verification before pushing:** exercise the change end-to-end
+  headlessly (Playwright for the web apps). Stub AI endpoints by
+  intercepting the network request — ES module bindings can't be
+  monkey-patched.
+- **Doctrine plans:** `plans/YYYY-MM-DD-<task>.md` files are committed
+  with the work, `approved:` frontmatter filled in.
