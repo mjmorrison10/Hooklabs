@@ -75,3 +75,12 @@ zero console errors.
 
 - 2026-07-09: patterns.js edits complete; node parse check: 112 patterns,
   15 text-only, 8 video-only, 10 CTAs, thread mechanism present, no dup ids.
+- 2026-07-09: app.js/index.html wiring complete. Added one item beyond the
+  written plan during verification: a +0.05 medium-native CTA boost in
+  buildCtas (without it, both-medium CTAs tied with and outranked text-native
+  ones, so text mode never surfaced its own CTAs — cosmetic ranking fix,
+  same feature).
+- 2026-07-09: Playwright suite 41/41 PASS (medium hint, offline text/video
+  filtering, medium-split proof via seeded x winner, AI prompt medium +
+  rule 6 + CTA ids both directions, ledger medium save, RECALL snapshot
+  compat, zero console errors).

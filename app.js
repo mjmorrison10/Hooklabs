@@ -4,7 +4,8 @@
 import { generateText } from "./llm.js";
 import {
     PATTERNS, ANGLES, CTA_PATTERNS, NICHES, PLATFORMS, OUTCOMES,
-    HISTORICAL_INSTANCES, EVIDENCE_LABELS, TIER_LABELS, MECHANISMS, countByTier
+    HISTORICAL_INSTANCES, EVIDENCE_LABELS, TIER_LABELS, MECHANISMS, countByTier,
+    MEDIUMS, mediumForPlatform
   } from "./patterns.js";
 
 (function () {
@@ -103,10 +104,14 @@ import {
     for (var i = 0; i < PATTERNS.length; i++) if (PATTERNS[i].id === id) return PATTERNS[i];
     return null;
   }
-  function familyStats() {
-    // { family: { wins, total, recentHooks: [] } }
+  function entryMedium(e) {
+    return e.medium || mediumForPlatform(e.platform);
+  }
+  function familyStats(medium) {
+    // { family: { wins, total, recentHooks: [] } } — optionally split by medium
     var map = {};
     state.ledger.forEach(function (e) {
+      if (medium && entryMedium(e) !== medium) return;
       var fam = e.family || "unknown";
       if (!map[fam]) map[fam] = { wins: 0, total: 0, recentHooks: [], scoreSum: 0 };
       map[fam].total++;
@@ -170,8 +175,12 @@ import {
         }
       });
     }
-    var stats = familyStats();
-    var scored = PATTERNS.map(function (p) {
+    var medium = mediumForPlatform(platform);
+    var stats = familyStats(medium);
+    var pool = PATTERNS.filter(function (p) {
+      return (p.mediums || ["video", "text"]).indexOf(medium) >= 0; // hard medium filter
+    });
+    var scored = pool.map(function (p) {
       var nicheFit = (!p.niches || p.niches.indexOf(niche) >= 0 || p.niches.indexOf("general") >= 0) ? 1 : 0.35;
       var platformFit = (!p.platforms || p.platforms.indexOf(platform) >= 0) ? 1 : 0.5;
       var angleFit = !allowedFamilies || allowedFamilies[p.family] || allowedFamilies[p.mechanism] ? 1 : 0.15;
@@ -343,6 +352,13 @@ import {
       .replace(/\{small_niche\}/g, "tight niche")
       .replace(/\{high_intent\}/g, "high intent")
       .replace(/\{big_audience\}/g, "empty reach")
+      .replace(/\{done_thing\}/g, "building this for 3 years")
+      .replace(/\{common_advice\}/g, "post more")
+      .replace(/\{starting_point\}/g, "day one")
+      .replace(/\{shock_stat\}/g, "90% of hooks die in the first second")
+      .replace(/\{setback\}/g, "a dead launch")
+      .replace(/\{confession\}/g, "most of my winners were logged, not guessed")
+      .replace(/\{category\}/g, "creator habit")
       .replace(/\{stack_type\}/g, "creator ops");
     // leftover {slots}
     text = text.replace(/\{[^}]+\}/g, function (m) {
@@ -396,6 +412,7 @@ import {
     var comps = state.comps.filter(function (c) {
       return !c.niche || c.niche === niche || c.niche === "general";
     });
+    var medium = mediumForPlatform(platform);
     var candidates = selected.map(function (item, idx) {
       var text = offlineFill(item.pattern, topic);
       var bestComp = null;
@@ -410,6 +427,7 @@ import {
         id: uid(),
         text: text,
         pattern: item.pattern,
+        medium: medium,
         score: finalScore,
         winRate: item.winRate,
         personal: item.personal,
@@ -448,9 +466,11 @@ import {
     }).sort(function (x, y) { return y.score - x.score; }).slice(0, 5);
   }
 
-  function buildCtas(topic, goal) {
-    var stats = familyStats();
-    var list = CTA_PATTERNS.map(function (c) {
+  function buildCtas(topic, goal, medium) {
+    var stats = familyStats(medium);
+    var list = CTA_PATTERNS.filter(function (c) {
+      return !medium || (c.mediums || ["video", "text"]).indexOf(medium) >= 0;
+    }).map(function (c) {
       var text = offlineFill({ scaffold: c.scaffold, why: c.why }, topic);
       // light personal boost if engagement-ish ledger exists
       var boost = (stats.engagement && stats.engagement.total) ? stats.engagement.scoreSum / stats.engagement.total : 0.5;
@@ -459,9 +479,11 @@ import {
         name: c.name,
         text: text,
         why: c.why,
-        score: 0.5 + boost * 0.3 + (goal === "comments" && (c.id === "question" || c.id === "disagree") ? 0.15 : 0)
-          + (goal === "saves" && c.id === "save" ? 0.2 : 0)
+        score: 0.5 + boost * 0.3 + (goal === "comments" && (c.id === "question" || c.id === "disagree" || c.id === "reply-take") ? 0.15 : 0)
+          + (goal === "saves" && (c.id === "save" || c.id === "bookmark") ? 0.2 : 0)
           + (goal === "series" && c.id === "follow-series" ? 0.2 : 0)
+          // medium-native CTAs edge out generic ones within their medium
+          + (medium && c.mediums && c.mediums.length === 1 && c.mediums[0] === medium ? 0.05 : 0)
       };
     });
     list.sort(function (a, b) { return b.score - a.score; });
@@ -469,14 +491,20 @@ import {
   }
 
   async function underwriteWithAI(topic, sourceMaterial, niche, platform, goal, angleIds) {
+    var medium = mediumForPlatform(platform);
     var selected = selectPatterns(niche, platform, angleIds).slice(0, 14);
-    var stats = familyStats();
-    var ledgerSummary = state.ledger.slice(0, 15).map(function (e) {
+    var ctaList = CTA_PATTERNS.filter(function (c) {
+      return (c.mediums || ["video", "text"]).indexOf(medium) >= 0;
+    });
+    var ledgerSummary = state.ledger.filter(function (e) {
+      return entryMedium(e) === medium;
+    }).slice(0, 15).map(function (e) {
       return {
         hook: e.hook,
         outcome: e.outcome,
         family: e.family,
-        platform: e.platform
+        platform: e.platform,
+        medium: entryMedium(e)
       };
     });
     var comps = state.comps.slice(0, 12).map(function (c) {
@@ -495,6 +523,10 @@ import {
       };
     });
 
+    var rule6 = medium === "text"
+      ? "6. Written to stop the scroll, not to be spoken: strong first line, line breaks allowed, no filler. When platform is x, the hook must fit a single X post (≤280 characters).\n"
+      : "6. Keep hooks speakable in under ~3 seconds when possible.\n";
+
     var prompt =
       "You are HOOKLAB, an evidence-based hook underwriting engine for short-form creators.\n" +
       "You do NOT invent freeform viral hooks. You fill proven scaffolds with grounded specifics.\n" +
@@ -504,7 +536,7 @@ import {
       "3. Respect brand voice notes if present.\n" +
       "4. Never invent fake statistics or claim a hook is proven unless ledger data supports it.\n" +
       "5. Avoid clichés: game-changer, unlock, revolutionary, incredible, amazing.\n" +
-      "6. Keep hooks speakable in under ~3 seconds when possible.\n" +
+      rule6 +
       "7. Return strict JSON only.\n\n" +
       "Context:\n" +
       JSON.stringify({
@@ -512,6 +544,7 @@ import {
         sourceMaterial: (sourceMaterial || "").slice(0, 2500),
         niche: niche,
         platform: platform,
+        medium: medium,
         goal: goal,
         brandVoice: settings.brandVoice || "",
         patterns: patternPayload,
@@ -520,7 +553,7 @@ import {
         note: "Prefer core-tier patterns for daily drivers. Historical patterns are durable mechanisms (e.g. diagnosis/halitosis lineage) — use when they fit. Extended is depth."
       }, null, 2) +
       "\n\nReturn JSON shape:\n" +
-      "{\n  \"hooks\": [\n    {\n      \"patternId\": \"...\",\n      \"text\": \"final hook line\",\n      \"grounding\": \"short note on what evidence/source it used\",\n      \"angle\": \"myth-bust|teardown|proof|story|tactical\"\n    }\n  ],\n  \"ctas\": [\n    { \"id\": \"question|disagree|save|duet|follow-series|tag\", \"text\": \"...\" }\n  ]\n}\n" +
+      "{\n  \"hooks\": [\n    {\n      \"patternId\": \"...\",\n      \"text\": \"final hook line\",\n      \"grounding\": \"short note on what evidence/source it used\",\n      \"angle\": \"myth-bust|teardown|proof|story|tactical\"\n    }\n  ],\n  \"ctas\": [\n    { \"id\": \"" + ctaList.map(function (c) { return c.id; }).join("|") + "\", \"text\": \"...\" }\n  ]\n}\n" +
       "Generate one hook per provided pattern. Generate exactly 3 CTAs.";
 
     var raw = await generateText({
@@ -568,6 +601,7 @@ import {
         id: uid(),
         text: text,
         pattern: item.pattern,
+        medium: medium,
         score: finalScore,
         winRate: item.winRate,
         personal: item.personal,
@@ -593,6 +627,7 @@ import {
           id: uid(),
           text: text,
           pattern: item.pattern,
+          medium: medium,
           score: item.score * 0.7,
           winRate: item.winRate,
           personal: item.personal,
@@ -611,7 +646,7 @@ import {
     var ctas;
     if (parsed.ctas && parsed.ctas.length) {
       ctas = parsed.ctas.slice(0, 3).map(function (c) {
-        var base = CTA_PATTERNS.find(function (x) { return x.id === c.id; }) || CTA_PATTERNS[0];
+        var base = ctaList.find(function (x) { return x.id === c.id; }) || ctaList[0];
         return {
           id: base.id,
           name: base.name,
@@ -621,7 +656,7 @@ import {
         };
       });
     } else {
-      ctas = buildCtas(topic, goal);
+      ctas = buildCtas(topic, goal, medium);
     }
 
     return {
@@ -661,6 +696,7 @@ import {
           '<p class="hooktext">' + esc(c.text) + "</p>" +
           '<div class="meta">' +
             '<span class="tag">' + esc(c.pattern.family) + "</span>" +
+            (c.medium ? '<span class="tag">' + (c.medium === "text" ? "✍️ text" : "🎬 video") + "</span>" : "") +
             '<span class="tag">' + esc(c.pattern.tier || "core") + "</span>" +
             '<span class="tag">' + esc(c.mode) + "</span>" +
             (c.winRate != null ? '<span class="tag">win ' + Math.round(c.winRate * 100) + "%</span>" : "") +
@@ -1013,6 +1049,16 @@ import {
     chips.innerHTML = ANGLES.map(function (a) {
       return '<button type="button" class="chip" data-angle="' + esc(a.id) + '">' + esc(a.name) + "</button>";
     }).join("");
+    updateMediumHint();
+  }
+
+  function updateMediumHint() {
+    var hint = document.getElementById("mediumHint");
+    if (!hint) return;
+    var m = mediumForPlatform(document.getElementById("platform").value);
+    hint.textContent = m === "text"
+      ? MEDIUMS.text.icon + " Text-post mode — patterns & CTAs filtered for written hooks"
+      : MEDIUMS.video.icon + " Video mode — patterns & CTAs filtered for spoken opens";
   }
 
   async function runGenerate(useAI) {
@@ -1049,7 +1095,7 @@ import {
         var bundle2 = {
           hooks: hooks,
           angles: buildAngles(hooks),
-          ctas: buildCtas(topic, goal)
+          ctas: buildCtas(topic, goal, mediumForPlatform(platform))
         };
         showResults(bundle2);
         toast("Offline underwrite ready");
@@ -1070,6 +1116,7 @@ import {
     loadState();
     applyTheme(localStorage.getItem(LS_THEME) || "");
     initFormOptions();
+    document.getElementById("platform").addEventListener("change", updateMediumHint);
 
     // Bank filters
     var bankSearch = document.getElementById("bankSearch");
@@ -1236,6 +1283,7 @@ import {
         family: p ? p.family : "unknown",
         outcome: document.getElementById("entryOutcome").value,
         platform: document.getElementById("entryPlatform").value,
+        medium: mediumForPlatform(document.getElementById("entryPlatform").value),
         niche: document.getElementById("entryNiche").value,
         retention: document.getElementById("entryRetention").value,
         views: document.getElementById("entryViews").value,
