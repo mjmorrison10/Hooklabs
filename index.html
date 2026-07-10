@@ -244,7 +244,10 @@
           <button type="button" id="toggleOpenrouter">Show</button>
         </div>
         <div class="keystatus empty" id="openrouterStatus">Not set</div>
-        <label for="openrouterModel" style="margin-top:10px;display:block">Model</label>
+        <label for="openrouterModel" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">Model
+          <button type="button" id="openrouterModelRefresh" title="Re-pull the model list and pricing from OpenRouter"
+            style="font:inherit;font-size:11px;letter-spacing:.04em;background:none;border:none;color:var(--brand);cursor:pointer;padding:0;text-transform:none">↻ Refresh</button>
+        </label>
         <select id="openrouterModelSelect"></select>
         <input id="openrouterModel" type="text" placeholder="openai/gpt-4o-mini" style="margin-top:8px">
         <p class="hint" style="margin-top:6px">Live list from OpenRouter, ranked by
