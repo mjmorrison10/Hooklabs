@@ -232,6 +232,8 @@
           <button type="button" id="toggleGemini">Show</button>
         </div>
         <div class="keystatus empty" id="geminiStatus">Not set — free tier works for text underwriting</div>
+        <p class="hint" style="margin-top:6px">Gemini API keys are free within Google's rate limits; past
+          those limits Google bills your account.</p>
         <p class="hint" style="margin-top:6px;color:var(--brand)">🔗 Keys are shared across RECALL,
           HOOKLAB, BLAST, and PULSE on this device — enter once, works everywhere.</p>
       </div>
@@ -243,7 +245,11 @@
         </div>
         <div class="keystatus empty" id="openrouterStatus">Not set</div>
         <label for="openrouterModel" style="margin-top:10px;display:block">Model</label>
-        <input id="openrouterModel" type="text" placeholder="openai/gpt-4o-mini" value="openai/gpt-4o-mini">
+        <select id="openrouterModelSelect"></select>
+        <input id="openrouterModel" type="text" placeholder="openai/gpt-4o-mini" style="margin-top:8px">
+        <p class="hint" style="margin-top:6px">Live list from OpenRouter, ranked by
+          <a href="https://arena.ai/leaderboard/text" target="_blank" rel="noopener">arena.ai</a>.
+          FREE means $0 within the provider's rate limits; paid prices are per 1M tokens.</p>
       </div>
       <div>
         <label for="brandVoice">Brand voice notes <span class="opt">(optional)</span></label>
@@ -353,6 +359,7 @@
 
 <script src="stackdata.js"></script>
 <script src="stacknav.js"></script>
+<script src="stackmodels.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
