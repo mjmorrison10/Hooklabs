@@ -137,6 +137,9 @@
         <button class="btn ghost" id="exportLedgerBtn" type="button">Export JSON</button>
         <button class="btn ghost" id="importLedgerBtn" type="button">Import JSON</button>
         <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+        <button class="btn ghost" id="stackexport" type="button" title="Back up all 4 apps">⧉ Export stack backup</button>
+        <button class="btn ghost" id="stackimport" type="button">Import stack backup</button>
+        <input type="file" id="stackfile" accept="application/json,.json" style="display:none">
       </div>
       <div id="ledgerList" class="cardlist"></div>
       <p class="hint" id="ledgerEmpty">No entries yet. Log 10–20 past posts to unlock “Proven for you” badges.</p>
@@ -229,6 +232,8 @@
           <button type="button" id="toggleGemini">Show</button>
         </div>
         <div class="keystatus empty" id="geminiStatus">Not set — free tier works for text underwriting</div>
+        <p class="hint" style="margin-top:6px;color:var(--brand)">🔗 Keys are shared across RECALL,
+          HOOKLAB, BLAST, and PULSE on this device — enter once, works everywhere.</p>
       </div>
       <div id="openrouterBlock" class="hidden">
         <label for="openrouterKey">OpenRouter API key</label>
@@ -346,6 +351,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="stackdata.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

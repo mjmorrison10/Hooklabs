@@ -42,12 +42,23 @@ import {
       var raw = localStorage.getItem(LS_SETTINGS);
       if (raw) Object.assign(settings, JSON.parse(raw));
     } catch (e) {}
+    // Keys are shared across the stack: shared store wins; a legacy local key is
+    // promoted into the shared store on first read.
+    if (window.StackData) {
+      var merged = window.StackData.resolveKeys(settings, ["geminiKey", "openrouterKey", "openrouterModel"]);
+      settings.geminiKey = merged.geminiKey || "";
+      settings.openrouterKey = merged.openrouterKey || "";
+      if (merged.openrouterModel) settings.openrouterModel = merged.openrouterModel;
+    }
   }
   function saveSettings() {
     // Guard the write: a full/blocked store (Safari private mode, quota) would
     // otherwise throw uncaught and silently drop the just-entered API key.
     try {
       localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+      if (window.StackData) window.StackData.writeSharedKeys({
+        geminiKey: settings.geminiKey, openrouterKey: settings.openrouterKey, openrouterModel: settings.openrouterModel,
+      });
       return true;
     } catch (e) {
       toast("Couldn't save settings — storage full or blocked");
@@ -1262,6 +1273,12 @@ import {
       settings.openrouterModel = document.getElementById("openrouterModel").value.trim() || "openai/gpt-4o-mini";
       settings.brandVoice = document.getElementById("brandVoice").value.trim();
       saveSettings();
+      // Blanking a key field and saving clears it across the whole stack
+      // (saveSettings' write-through only writes non-empty values).
+      if (window.StackData) {
+        if (!settings.geminiKey) window.StackData.clearSharedKey("geminiKey");
+        if (!settings.openrouterKey) window.StackData.clearSharedKey("openrouterKey");
+      }
       refreshKeyStatus();
       document.getElementById("settingsScrim").classList.remove("open");
       toast("Settings saved");
@@ -1400,6 +1417,20 @@ import {
     document.getElementById("importLedgerBtn").addEventListener("click", function () {
       document.getElementById("importFile").click();
     });
+    // Whole-stack backup (all 4 apps)
+    if (window.StackData) {
+      document.getElementById("stackexport").addEventListener("click", function () {
+        window.StackData.exportToFile().then(function () { toast("Stack backup downloaded"); });
+      });
+      document.getElementById("stackimport").addEventListener("click", function () {
+        document.getElementById("stackfile").click();
+      });
+      document.getElementById("stackfile").addEventListener("change", function (ev) {
+        var f = ev.target.files && ev.target.files[0];
+        if (f) window.StackData.importFromFile(f, toast);
+        ev.target.value = "";
+      });
+    }
     document.getElementById("importFile").addEventListener("change", function (ev) {
       var file = ev.target.files && ev.target.files[0];
       if (!file) return;
@@ -1407,6 +1438,15 @@ import {
       reader.onload = function () {
         try {
           var data = JSON.parse(reader.result);
+          // If someone picks a whole-stack backup here, route it to the stack
+          // importer instead of trying to read it as a ledger.
+          if (window.StackData && window.StackData.isStackBackup(data)) {
+            if (confirm("This is a whole-stack backup. Restore it? It REPLACES data in all four apps on this device.\n\nContains: " + window.StackData.summary(data))) {
+              window.StackData.importAll(data).then(function () { location.reload(); });
+            }
+            ev.target.value = "";
+            return;
+          }
           // Normalize imported entries: an entry missing `id` would render an
           // empty data-del attribute, and Delete (filter x.id !== "") would then
           // wipe every *real* entry. Assign ids and drop shapeless objects.
