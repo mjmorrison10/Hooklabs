@@ -1115,6 +1115,7 @@ import {
     document.getElementById("geminiKey").value = settings.geminiKey || "";
     document.getElementById("openrouterKey").value = settings.openrouterKey || "";
     document.getElementById("openrouterModel").value = settings.openrouterModel || "openai/gpt-4o-mini";
+    if (window.StackModels) window.StackModels.populate(document.getElementById("openrouterModelSelect"), document.getElementById("openrouterModel"));
     document.getElementById("brandVoice").value = settings.brandVoice || "";
     document.getElementById("geminiBlock").classList.toggle("hidden", settings.provider !== "gemini");
     document.getElementById("openrouterBlock").classList.toggle("hidden", settings.provider !== "openrouter");
