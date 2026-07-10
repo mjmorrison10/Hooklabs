@@ -131,6 +131,7 @@
         HOOKLAB uses this to promote/demote patterns for <em>you</em>.
       </p>
       <div class="stats" id="ledgerStats"></div>
+      <div id="ledgerInsights" class="insights"></div>
       <div class="actionrow" style="margin:14px 0">
         <button class="btn primary" id="addEntryBtn" type="button">+ Log a post</button>
         <button class="btn ghost" id="exportLedgerBtn" type="button">Export JSON</button>
@@ -284,6 +285,11 @@
           <label for="entryNiche">Niche</label>
           <select id="entryNiche"></select>
         </div>
+      </div>
+      <div>
+        <label for="entryHypothesis">Why do you think this worked? <span class="opt">(optional)</span></label>
+        <select id="entryHypothesis"></select>
+        <input id="entryHypothesisNote" type="text" placeholder="Optional: your own words (e.g. named a fear no one else does)" style="margin-top:8px">
       </div>
       <div class="fieldrow">
         <div class="field">

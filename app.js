@@ -793,6 +793,44 @@ import {
     document.getElementById("resultsPanel").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function mechName(id) {
+    for (var i = 0; i < MECHANISMS.length; i++) if (MECHANISMS[i].id === id) return MECHANISMS[i].name;
+    return id;
+  }
+  // Group ledger entries by a key and count wins/total for win-rate insights.
+  function groupStats(keyFn) {
+    var m = {};
+    state.ledger.forEach(function (e) {
+      var k = keyFn(e); if (k == null || k === "") return;
+      if (!m[k]) m[k] = { total: 0, wins: 0 };
+      m[k].total++; if (e.outcome === "winner") m[k].wins++;
+    });
+    return m;
+  }
+  // Win-rate tables by mechanism / family / platform. ONLY groups with >= 3
+  // entries, and the n= count is always shown — HOOKLAB never shows a fake %.
+  function insightsHTML() {
+    if (state.ledger.length < 3) return "";
+    var groups = [
+      { title: "By why-it-worked", stats: groupStats(function (e) { return e.hypothesis; }), label: mechName },
+      { title: "By pattern family", stats: groupStats(function (e) { return e.family; }), label: function (x) { return x; } },
+      { title: "By platform", stats: groupStats(function (e) { return e.platform; }), label: function (x) { return x; } }
+    ];
+    var blocks = groups.map(function (g) {
+      var keys = Object.keys(g.stats).filter(function (k) { return g.stats[k].total >= 3; })
+        .sort(function (a, b) { return (g.stats[b].wins / g.stats[b].total) - (g.stats[a].wins / g.stats[a].total); });
+      if (!keys.length) return "";
+      return '<div class="insightgroup"><h4>' + esc(g.title) + "</h4>" +
+        keys.map(function (k) {
+          var s = g.stats[k], pct = Math.round(s.wins / s.total * 100);
+          return '<div class="insightrow"><span class="ik">' + esc(g.label(k)) + "</span>" +
+            '<span class="ibar"><span style="width:' + pct + '%"></span></span>' +
+            '<span class="iv">' + pct + '% win <span class="in">n=' + s.total + "</span></span></div>";
+        }).join("") + "</div>";
+    }).filter(Boolean);
+    if (!blocks.length) return '<p class="hint" style="margin:10px 0 0">Once any mechanism, family, or platform has 3+ logged posts, its win rate shows here (always with the sample size, never a fake percentage).</p>';
+    return '<div class="insightshead">Insights</div>' + blocks.join("");
+  }
   function renderLedger() {
     var wins = state.ledger.filter(function (e) { return e.outcome === "winner"; }).length;
     var meh = state.ledger.filter(function (e) { return e.outcome === "meh"; }).length;
@@ -808,6 +846,8 @@ import {
       '<div class="stat"><div class="n">' + meh + '</div><div class="l">Meh</div></div>' +
       '<div class="stat"><div class="n">' + dead + '</div><div class="l">Dead</div></div>' +
       '<div class="stat"><div class="n">' + esc(topFam || "—") + '</div><div class="l">Top family</div></div>';
+
+    document.getElementById("ledgerInsights").innerHTML = insightsHTML();
 
     var list = document.getElementById("ledgerList");
     var empty = document.getElementById("ledgerEmpty");
@@ -830,10 +870,12 @@ import {
             '<span class="tag">' + esc(e.family || (p && p.family) || "—") + "</span>" +
             '<span class="tag">' + esc(e.platform || "—") + "</span>" +
             '<span class="tag">' + esc(e.niche || "—") + "</span>" +
+            (e.hypothesis ? '<span class="tag mech">' + esc(mechName(e.hypothesis)) + "</span>" : "") +
             (e.retention != null && e.retention !== "" ? '<span class="tag">3s ' + esc(e.retention) + "%</span>" : "") +
             (e.views != null && e.views !== "" ? '<span class="tag">' + esc(e.views) + " views</span>" : "") +
           "</div>" +
           (e.notes ? '<p class="why">' + esc(e.notes) + "</p>" : "") +
+          (e.hypothesisNote ? '<p class="why">Hypothesis: ' + esc(e.hypothesisNote) + "</p>" : "") +
         "</article>"
       );
     }).join("");
@@ -1043,6 +1085,8 @@ import {
     document.getElementById("entryRetention").value = "";
     document.getElementById("entryViews").value = "";
     document.getElementById("entryNotes").value = "";
+    document.getElementById("entryHypothesis").value = prefill.hypothesis || "";
+    document.getElementById("entryHypothesisNote").value = "";
     document.getElementById("entryScrim").classList.add("open");
   }
 
@@ -1077,6 +1121,10 @@ import {
     fillSelect(document.getElementById("entryPattern"), PATTERNS.map(function (p) {
       return { id: p.id, label: p.name + " (" + p.family + ")" };
     }), "id", "label");
+    // Mechanism hypothesis: "why do I think this worked?" — reuses the pattern
+    // bank's own MECHANISMS taxonomy so insights group cleanly later.
+    fillSelect(document.getElementById("entryHypothesis"),
+      [{ id: "", name: "(not sure)" }].concat(MECHANISMS), "id", "name");
 
     var chips = document.getElementById("angleChips");
     chips.innerHTML = ANGLES.map(function (a) {
@@ -1329,6 +1377,8 @@ import {
         retention: document.getElementById("entryRetention").value,
         views: document.getElementById("entryViews").value,
         notes: document.getElementById("entryNotes").value.trim(),
+        hypothesis: document.getElementById("entryHypothesis").value,
+        hypothesisNote: document.getElementById("entryHypothesisNote").value.trim(),
         createdAt: new Date().toISOString()
       };
       state.ledger.unshift(entry);
