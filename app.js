@@ -874,7 +874,10 @@ import {
         '<article class="card entry">' +
           '<div class="cardhead">' +
             '<span class="outcome ' + esc(e.outcome) + '">' + esc(e.outcome) + "</span>" +
-            '<button class="btn sm danger" data-del-entry="' + esc(e.id) + '" type="button">Delete</button>' +
+            '<span style="margin-left:auto;display:flex;gap:6px">' +
+              '<button class="btn sm" data-edit-entry="' + esc(e.id) + '" type="button">Edit</button>' +
+              '<button class="btn sm danger" data-del-entry="' + esc(e.id) + '" type="button">Delete</button>' +
+            "</span>" +
           "</div>" +
           '<p class="hooktext">' + esc(e.hook) + "</p>" +
           '<div class="meta">' +
@@ -1088,8 +1091,13 @@ import {
     }
   }
 
+  var editingEntryId = null;
+
   function openEntryModal(prefill) {
     prefill = prefill || {};
+    editingEntryId = null;
+    document.getElementById("entryTitle").textContent = "Log a post";
+    document.getElementById("saveEntry").textContent = "Save to ledger";
     document.getElementById("entryHook").value = prefill.hook || "";
     if (prefill.patternId) document.getElementById("entryPattern").value = prefill.patternId;
     document.getElementById("entryOutcome").value = prefill.outcome || "winner";
@@ -1098,6 +1106,24 @@ import {
     document.getElementById("entryNotes").value = "";
     document.getElementById("entryHypothesis").value = prefill.hypothesis || "";
     document.getElementById("entryHypothesisNote").value = "";
+    document.getElementById("entryScrim").classList.add("open");
+  }
+
+  // Open the same modal to edit an existing ledger entry in place.
+  function openEntryModalForEdit(entry) {
+    editingEntryId = entry.id;
+    document.getElementById("entryTitle").textContent = "Edit entry";
+    document.getElementById("saveEntry").textContent = "Update";
+    document.getElementById("entryHook").value = entry.hook || "";
+    if (entry.patternId != null) document.getElementById("entryPattern").value = entry.patternId;
+    document.getElementById("entryOutcome").value = entry.outcome || "winner";
+    if (entry.platform != null) document.getElementById("entryPlatform").value = entry.platform;
+    if (entry.niche != null) document.getElementById("entryNiche").value = entry.niche;
+    document.getElementById("entryRetention").value = entry.retention != null ? entry.retention : "";
+    document.getElementById("entryViews").value = entry.views != null ? entry.views : "";
+    document.getElementById("entryNotes").value = entry.notes || "";
+    document.getElementById("entryHypothesis").value = entry.hypothesis || "";
+    document.getElementById("entryHypothesisNote").value = entry.hypothesisNote || "";
     document.getElementById("entryScrim").classList.add("open");
   }
 
@@ -1358,9 +1384,17 @@ import {
         if (pid) document.getElementById("entryPattern").value = pid;
         return;
       }
+      var editE = e.target.closest("[data-edit-entry]");
+      if (editE) {
+        var eid = editE.getAttribute("data-edit-entry");
+        var entry = state.ledger.filter(function (x) { return x.id === eid; })[0];
+        if (entry) openEntryModalForEdit(entry);
+        return;
+      }
       var delE = e.target.closest("[data-del-entry]");
       if (delE) {
         var id = delE.getAttribute("data-del-entry");
+        if (!confirm("Delete this ledger entry? Insights recalc without it.")) return;
         state.ledger = state.ledger.filter(function (x) { return x.id !== id; });
         saveState();
         renderLedger();
@@ -1379,6 +1413,7 @@ import {
 
     document.getElementById("addEntryBtn").addEventListener("click", function () { openEntryModal(); });
     document.getElementById("closeEntry").addEventListener("click", function () {
+      editingEntryId = null;
       document.getElementById("entryScrim").classList.remove("open");
     });
     document.getElementById("saveEntry").addEventListener("click", function () {
@@ -1386,8 +1421,7 @@ import {
       if (!hook) { toast("Hook text required"); return; }
       var patternId = document.getElementById("entryPattern").value;
       var p = patternById(patternId);
-      var entry = {
-        id: uid(),
+      var fields = {
         hook: hook,
         patternId: patternId,
         family: p ? p.family : "unknown",
@@ -1399,14 +1433,35 @@ import {
         views: document.getElementById("entryViews").value,
         notes: document.getElementById("entryNotes").value.trim(),
         hypothesis: document.getElementById("entryHypothesis").value,
-        hypothesisNote: document.getElementById("entryHypothesisNote").value.trim(),
-        createdAt: new Date().toISOString()
+        hypothesisNote: document.getElementById("entryHypothesisNote").value.trim()
       };
-      state.ledger.unshift(entry);
-      saveState();
-      document.getElementById("entryScrim").classList.remove("open");
-      renderLedger();
-      toast("Logged — ledger updated");
+      if (editingEntryId) {
+        // Update in place: preserve id, createdAt, and source (so a PULSE re-log still matches).
+        for (var i = 0; i < state.ledger.length; i++) {
+          if (state.ledger[i].id === editingEntryId) {
+            var orig = state.ledger[i];
+            var updated = { id: orig.id, createdAt: orig.createdAt, editedAt: new Date().toISOString() };
+            if (orig.source) updated.source = orig.source;
+            for (var k in fields) updated[k] = fields[k];
+            state.ledger[i] = updated;
+            break;
+          }
+        }
+        editingEntryId = null;
+        saveState();
+        document.getElementById("entryScrim").classList.remove("open");
+        renderLedger();
+        toast("Entry updated");
+      } else {
+        var entry = { id: uid() };
+        for (var f in fields) entry[f] = fields[f];
+        entry.createdAt = new Date().toISOString();
+        state.ledger.unshift(entry);
+        saveState();
+        document.getElementById("entryScrim").classList.remove("open");
+        renderLedger();
+        toast("Logged — ledger updated");
+      }
     });
 
     document.getElementById("exportLedgerBtn").addEventListener("click", function () {
