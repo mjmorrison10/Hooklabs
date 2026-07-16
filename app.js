@@ -1504,7 +1504,7 @@ import {
           // importer instead of trying to read it as a ledger.
           if (window.StackData && window.StackData.isStackBackup(data)) {
             if (confirm("This is a whole-stack backup. Restore it? It REPLACES data in all four apps on this device.\n\nContains: " + window.StackData.summary(data))) {
-              window.StackData.importAll(data).then(function () { location.reload(); });
+              window.StackData.importAll(data, { replace: true }).then(function () { location.reload(); });
             }
             ev.target.value = "";
             return;
