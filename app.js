@@ -1395,6 +1395,7 @@ import {
       if (delE) {
         var id = delE.getAttribute("data-del-entry");
         if (!confirm("Delete this ledger entry? Insights recalc without it.")) return;
+        if (window.StackData) StackData.tombstone("hooklabLedger", id);
         state.ledger = state.ledger.filter(function (x) { return x.id !== id; });
         saveState();
         renderLedger();
@@ -1404,6 +1405,7 @@ import {
       var delC = e.target.closest("[data-del-comp]");
       if (delC) {
         var cid = delC.getAttribute("data-del-comp");
+        if (window.StackData) StackData.tombstone("hooklabComp", cid);
         state.comps = state.comps.filter(function (x) { return x.id !== cid; });
         saveState();
         renderBank();
@@ -1489,6 +1491,7 @@ import {
         if (f) window.StackData.importFromFile(f, toast);
         ev.target.value = "";
       });
+      if (window.StackData.bindSyncUI) window.StackData.bindSyncUI(toast);
     }
     document.getElementById("importFile").addEventListener("change", function (ev) {
       var file = ev.target.files && ev.target.files[0];
