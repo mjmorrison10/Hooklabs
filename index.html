@@ -141,6 +141,10 @@
         <button class="btn ghost" id="stackexport" type="button" title="Back up all 4 apps">⧉ Export stack backup</button>
         <button class="btn ghost" id="stackimport" type="button">Import stack backup</button>
         <input type="file" id="stackfile" accept="application/json,.json" style="display:none">
+        <button class="btn ghost" id="stacksync" type="button" title="Keep this device and your phone in step through your own Google Drive">⟳ Sync Drive</button>
+        <button class="btn ghost" id="stackmerge" type="button" title="Fold another backup in without deleting anything">Merge a file…</button>
+        <input type="file" id="stackmergefile" accept="application/json,.json" style="display:none">
+        <span class="hint" id="syncstatus" style="align-self:center"></span>
       </div>
       <div id="ledgerList" class="cardlist"></div>
       <p class="hint" id="ledgerEmpty">No entries yet. Log 10–20 past posts to unlock “Proven for you” badges.</p>
