@@ -90,6 +90,7 @@
         <button class="btn ghost" id="offlineBtn" type="button">Offline (no AI)</button>
         <span class="progress" id="genLabel"></span>
       </div>
+      <div class="ai-error" id="genError" aria-live="polite"></div>
       <p class="hint" style="margin-top:12px">
         Offline mode fills scaffolds from the pattern bank + your ledger only — no API key needed.
         AI mode rewrites with grounded specifics. Either way, every card shows provenance.
@@ -231,6 +232,16 @@
           <label class="radiopill"><input type="radio" name="provider" value="gemini" checked>Gemini <span class="pilltag">default</span></label>
           <label class="radiopill"><input type="radio" name="provider" value="openrouter">OpenRouter</label>
         </div>
+      </div>
+      <div>
+        <label>AI speed vs. quality</label>
+        <div class="providerrow">
+          <label class="radiopill"><input type="radio" name="aiThinking" value="on" checked>Best quality <span class="pilltag">thinking</span></label>
+          <label class="radiopill"><input type="radio" name="aiThinking" value="off">Fastest</label>
+        </div>
+        <p class="hint" style="margin-top:8px">"Best quality" lets Gemini think before answering — better
+          hooks, slower. "Fastest" skips thinking. Gemini only. Saves instantly and applies across
+          RECALL, HOOKLAB, and BLAST on this device.</p>
       </div>
       <div id="geminiBlock">
         <label for="geminiKey">Gemini API key</label>

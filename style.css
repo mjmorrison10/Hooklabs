@@ -104,6 +104,9 @@ select{cursor:pointer}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn.sm{padding:7px 10px;font-size:11px}
 .progress{font-family:var(--mono);font-size:12px;color:var(--muted)}
+/* Persistent AI error line — stays visible until the next run starts */
+.ai-error{display:none;margin-top:10px;font-size:13px;line-height:1.4;color:var(--neg)}
+.ai-error.on{display:block}
 .hint{font-size:12px;color:var(--faint);line-height:1.55}
 .linkbtn{background:none;border:none;padding:0;color:var(--brand);font-family:var(--sans);
   font-size:inherit;text-decoration:underline;cursor:pointer}
