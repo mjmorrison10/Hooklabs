@@ -125,6 +125,67 @@ import {
     toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2400);
   }
 
+  // ---------- AI ops UX: learned durations, thinking pref, run wrapper ----------
+  var LS_AI_MS = "hooklab_ai_ms_v1";
+  function recordAiMs(op, ms) {
+    try {
+      var all = JSON.parse(localStorage.getItem(LS_AI_MS) || "{}"); if (!all || typeof all !== "object") all = {};
+      var a = Array.isArray(all[op]) ? all[op] : [];
+      a.push(ms); while (a.length > 5) a.shift();
+      all[op] = a;
+      localStorage.setItem(LS_AI_MS, JSON.stringify(all));
+    } catch (e) {}
+  }
+  function typicalAiMs(op) {
+    try {
+      var a = (JSON.parse(localStorage.getItem(LS_AI_MS) || "{}") || {})[op];
+      if (!Array.isArray(a) || !a.length) return 0;
+      var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return Math.round(s / a.length);
+    } catch (e) { return 0; }
+  }
+  // Thinking preference ("on" = best quality, "off" = fastest). Own key plus
+  // the StackData shared store so all stack apps follow one switch on this
+  // device; shared value wins on read, default ON.
+  var LS_THINKING = "hooklab_thinking_v1";
+  function getThinkingPref() {
+    var v = "";
+    try { v = (window.StackData && window.StackData.readSharedKeys().aiThinking) || localStorage.getItem(LS_THINKING) || ""; } catch (e) {}
+    return v === "off" ? "off" : "on";
+  }
+  function setThinkingPref(v) {
+    try { localStorage.setItem(LS_THINKING, v); } catch (e) {}
+    if (window.StackData) window.StackData.writeSharedKeys({ aiThinking: v });
+  }
+  // Run one AI operation with an elapsed ticker + learned ETA + persistent
+  // error line. fn(onPhase) returns a promise; rethrows so the caller's catch
+  // (toast) and finally (button re-enable) keep working.
+  async function aiRun(op, labelEl, errEl, baseText, fn) {
+    var typ = typicalAiMs(op);
+    var eta = typ ? " (typically ~" + Math.round(typ / 1000) + "s)" : "";
+    var start = Date.now(), phase = "";
+    if (errEl) { errEl.textContent = ""; errEl.classList.remove("on"); }
+    function tick() {
+      labelEl.textContent = (phase || baseText) + "… " + Math.round((Date.now() - start) / 1000) + "s" + eta;
+    }
+    tick();
+    var timer = setInterval(tick, 1000);
+    try {
+      var out = await fn(function (msg) { phase = msg || ""; tick(); });
+      recordAiMs(op, Date.now() - start);
+      return out;
+    } catch (err) {
+      if (errEl) {
+        errEl.textContent = baseText + " failed after " + Math.round((Date.now() - start) / 1000) + "s — " +
+          (err && err.message || "unknown error");
+        errEl.classList.add("on");
+      }
+      throw err;
+    } finally {
+      clearInterval(timer);
+      labelEl.textContent = "";
+    }
+  }
+
   // ---------- helpers ----------
   function uid() {
     return "id_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -529,7 +590,7 @@ import {
     return list.slice(0, 3);
   }
 
-  async function underwriteWithAI(topic, sourceMaterial, niche, platform, goal, angleIds) {
+  async function underwriteWithAI(topic, sourceMaterial, niche, platform, goal, angleIds, onPhase) {
     var medium = mediumForPlatform(platform);
     var selected = selectPatterns(niche, platform, angleIds).slice(0, 14);
     var ctaList = CTA_PATTERNS.filter(function (c) {
@@ -595,6 +656,9 @@ import {
       "{\n  \"hooks\": [\n    {\n      \"patternId\": \"...\",\n      \"text\": \"final hook line\",\n      \"grounding\": \"short note on what evidence/source it used\",\n      \"angle\": \"myth-bust|teardown|proof|story|tactical\"\n    }\n  ],\n  \"ctas\": [\n    { \"id\": \"" + ctaList.map(function (c) { return c.id; }).join("|") + "\", \"text\": \"...\" }\n  ]\n}\n" +
       "Generate one hook per provided pattern. Generate exactly 3 CTAs.";
 
+    // Thinking tokens count against maxOutputTokens on Gemini — raise the cap
+    // when thinking so the JSON itself keeps headroom.
+    var thinkingOn = getThinkingPref() === "on";
     var raw = await generateText({
       provider: settings.provider,
       geminiKey: settings.geminiKey,
@@ -604,7 +668,9 @@ import {
       prompt: prompt,
       temperature: 0.55,
       jsonMode: true,
-      maxTokens: 4096
+      thinkingBudget: thinkingOn ? 2048 : 0,
+      maxTokens: thinkingOn ? 8192 : 4096,
+      onPhase: onPhase
     });
 
     var parsed;
@@ -1148,6 +1214,9 @@ import {
     document.getElementById("brandVoice").value = settings.brandVoice || "";
     document.getElementById("geminiBlock").classList.toggle("hidden", settings.provider !== "gemini");
     document.getElementById("openrouterBlock").classList.toggle("hidden", settings.provider !== "openrouter");
+    // Re-reflect the thinking pref — another stack app may have changed it.
+    var think = document.querySelector('input[name="aiThinking"][value="' + getThinkingPref() + '"]');
+    if (think) think.checked = true;
     refreshKeyStatus();
     document.getElementById("settingsScrim").classList.add("open");
   }
@@ -1206,8 +1275,9 @@ import {
           openSettings();
           return;
         }
-        label.textContent = "Underwriting with evidence…";
-        var bundle = await underwriteWithAI(topic, sourceMaterial, niche, platform, goal, angleIds);
+        var bundle = await aiRun("underwrite", label, document.getElementById("genError"), "Underwriting with evidence", function (onPhase) {
+          return underwriteWithAI(topic, sourceMaterial, niche, platform, goal, angleIds, onPhase);
+        });
         showResults(bundle);
         toast("Ranked " + bundle.hooks.length + " candidates");
       } else {
@@ -1346,6 +1416,15 @@ import {
     });
 
     document.getElementById("underwriteBtn").addEventListener("click", function () { runGenerate(true); });
+    // Thinking pref: reflect saved choice, persist immediately on change.
+    (function () {
+      var pref = getThinkingPref();
+      var checked = document.querySelector('input[name="aiThinking"][value="' + pref + '"]');
+      if (checked) checked.checked = true;
+      document.querySelectorAll('input[name="aiThinking"]').forEach(function (r) {
+        r.addEventListener("change", function () { if (r.checked) setThinkingPref(r.value); });
+      });
+    })();
     document.getElementById("offlineBtn").addEventListener("click", function () { runGenerate(false); });
 
     document.getElementById("resultTabs").addEventListener("click", function (e) {
