@@ -81,11 +81,14 @@ body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
 /* forms */
 .fieldgrid{display:grid;gap:12px;margin-bottom:12px}
 .fieldrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:12px}
-.field label, .mbody label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.field label, .mbody label{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .field .opt, label .opt, h3 .opt{text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400}
+/* 16px is the iOS zoom-on-focus threshold — below it, tapping a field zooms
+   the page in and never zooms back out. */
 textarea, input[type="text"], input[type="password"], input[type="number"], select{
   width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;
-  padding:10px 12px;color:var(--ink);font-family:var(--sans);font-size:14px;margin-top:6px;outline:none}
+  padding:11px 12px;color:var(--ink);font-family:var(--sans);font-size:16px;margin-top:6px;outline:none;
+  min-height:44px}
 textarea{min-height:88px;resize:vertical;line-height:1.45}
 textarea:focus, input:focus, select:focus{border-color:var(--brand)}
 select{cursor:pointer}
@@ -176,10 +179,13 @@ select{cursor:pointer}
 .scrim.open{display:flex}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:15px;
   width:100%;max-width:520px;box-shadow:var(--shadow);max-height:88vh;display:flex;flex-direction:column}
+/* dvh keeps the footer reachable when a phone's toolbars slide in/out */
+@supports (height:1dvh){.modal{max-height:88dvh}}
 .modal h2{margin:0;padding:17px 18px;font-size:16px;border-bottom:1px solid var(--border)}
 .mbody{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:11px}
 .mbody textarea{min-height:72px}
-.mfoot{display:flex;gap:9px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--border)}
+.mfoot{display:flex;gap:9px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--border);
+  padding-bottom:calc(14px + env(safe-area-inset-bottom))}
 .keyrow{display:flex;gap:8px;align-items:center;margin-top:6px}
 .keyrow input{flex:1;font-family:var(--mono);letter-spacing:.02em;margin-top:0}
 .keyrow button{flex:none;background:var(--surface2);border:1px solid var(--border);
@@ -190,11 +196,29 @@ select{cursor:pointer}
 .keystatus.set{color:var(--pos)}
 .keystatus.empty{color:var(--faint)}
 .providerrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
-.radiopill{display:flex;align-items:center;gap:7px;background:var(--ground);border:1px solid var(--border);
-  border-radius:9px;padding:9px 13px;cursor:pointer;font-size:13px;color:var(--ink)}
-.radiopill:has(input:checked){border-color:var(--brand);background:var(--brand-ghost)}
-.radiopill input{margin:0}
-.radiopill .pilltag{color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.04em}
+/* 44px is the minimum comfortable touch target; the old 36px pills were a
+   coin-flip to hit on a phone. */
+.radiopill{display:flex;align-items:center;gap:10px;background:var(--ground);border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px;cursor:pointer;font-size:14px;color:var(--ink);min-height:44px}
+.radiopill:has(input:checked){border-color:var(--brand);background:var(--brand-ghost);
+  box-shadow:inset 0 0 0 1px var(--brand)}
+.radiopill input{margin:0;flex:none;width:18px;height:18px;accent-color:var(--brand)}
+.radiopill .pilltag{color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.04em}
+
+/* Stacked cards: one option per row with a plain-language description.
+   Side-by-side pills wrapped unpredictably at phone widths and the 10px
+   monospace tags were unreadable. */
+.radiocards{flex-direction:column;gap:8px}
+.radiocards .radiopill{width:100%;align-items:flex-start}
+.rbody{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rtitle{font-size:14px;font-weight:600;line-height:1.3}
+.rdesc{font-size:12px;line-height:1.4;color:var(--muted)}
+/* The modal styles its section labels as uppercase monospace, and a
+   .radiopill IS a <label> — without this reset the option text rendered as
+   "SKIPS THINKING. ANSWERS SOONER..." in 12px mono, which is the exact
+   unreadability this change exists to fix. */
+.mbody .radiopill,.rtitle,.rdesc{font-family:var(--sans);text-transform:none;letter-spacing:normal}
+.rtitle{color:var(--ink)}
 
 .foot{margin-top:32px;padding:18px 2px 0;border-top:1px solid var(--border);
   display:flex;gap:16px;align-items:center;flex-wrap:wrap}
@@ -230,3 +254,12 @@ select{cursor:pointer}
 .see-more-wrap{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);text-align:center}
 .card.instance{border-color:rgba(232,181,77,.35)}
 .card.instance .hooktext{font-weight:600}
+
+@media (max-width:480px){
+  .scrim{padding:8px}
+  .modal{max-width:none}
+  /* Every option group goes one-per-row on a phone, so nothing is a
+     half-wrapped guess. */
+  .providerrow{flex-direction:column;gap:8px}
+  .providerrow .radiopill{width:100%}
+}
