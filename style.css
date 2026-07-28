@@ -123,6 +123,7 @@ select{cursor:pointer}
 .badge.market{background:var(--warn-ghost);border-color:transparent;color:var(--warn)}
 .badge.hypo{background:var(--hypo-ghost);border-color:transparent;color:var(--hypo)}
 .badge.fatigued{background:var(--neg-ghost);border-color:transparent;color:var(--neg)}
+.badge.auto{background:var(--brand-ghost);border-color:transparent;color:var(--brand);cursor:help}
 
 .tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
 .tab{background:var(--surface2);border:1px solid var(--border);color:var(--muted);

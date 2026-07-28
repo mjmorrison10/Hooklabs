@@ -940,6 +940,11 @@ import {
         '<article class="card entry">' +
           '<div class="cardhead">' +
             '<span class="outcome ' + esc(e.outcome) + '">' + esc(e.outcome) + "</span>" +
+            // Provenance, per the house rule: an entry PULSE promoted on its own
+            // says so, and says it is kept in sync rather than hand-logged.
+            (e.source === "pulse-auto"
+              ? '<span class="badge auto" title="Added automatically by PULSE — this hook outperformed your own posts on its platform. PULSE keeps it in sync, so edits here are overwritten and it disappears once newer posts outperform it.">AUTO</span>'
+              : "") +
             '<span style="margin-left:auto;display:flex;gap:6px">' +
               '<button class="btn sm" data-edit-entry="' + esc(e.id) + '" type="button">Edit</button>' +
               '<button class="btn sm danger" data-del-entry="' + esc(e.id) + '" type="button">Delete</button>' +
